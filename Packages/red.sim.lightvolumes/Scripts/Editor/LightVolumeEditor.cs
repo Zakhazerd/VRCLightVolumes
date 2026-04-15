@@ -123,6 +123,54 @@ namespace VRCLightVolumes {
 
             List<string> hiddenFields = new List<string> { "m_Script", "PreviewVoxels", "LightVolumeInstance", "LightVolumeSetup" };
 
+            private void FitColliderToRoom(ref Transform boxCollider)
+            {
+
+                //   boxCollider.center = Vector3.zero; // Reset the center of the BoxCollider
+                //   boxCollider.size = Vector3.one; // Reset the size of the BoxCollider to (1, 1, 1)
+
+                Vector3[] localDirectionsArray = {
+   boxCollider.transform.TransformDirection(Vector3.right),
+     boxCollider.transform.TransformDirection(Vector3.left),
+     boxCollider.transform.TransformDirection(Vector3.up),
+     boxCollider.transform.TransformDirection(Vector3.down),
+     boxCollider.transform.TransformDirection(Vector3.forward),
+     boxCollider.transform.TransformDirection(Vector3.back)
+};
+
+                float[] distanceArray = new float[6];
+
+                for (int i = 0; i < localDirectionsArray.Length; i++)
+                {
+                    RaycastHit hit;
+                    if (Physics.Raycast(boxCollider.transform.position, localDirectionsArray[i], out hit, 50))
+                    {
+
+                        distanceArray[i] = hit.distance;
+                        Debug.Log(hit.distance);
+                    }
+                }
+
+                float distanceX = distanceArray[0] + distanceArray[1];
+                float distanceY = distanceArray[2] + distanceArray[3];
+                float distanceZ = distanceArray[4] + distanceArray[5];
+                float middleX = distanceX / 2;
+                float middleY = distanceY / 2;
+                float middleZ = distanceZ / 2;
+                float distanceMoveX = middleX - distanceArray[1];
+                float distanceMoveY = middleY - distanceArray[3];
+                float distanceMoveZ = middleZ - distanceArray[5];
+
+                Debug.Log(distanceArray[0]);
+                Debug.Log(distanceArray[1]);
+                Debug.Log(distanceMoveX);
+                Vector3 localDistanceMove = new Vector3(distanceMoveX, distanceMoveY, distanceMoveZ);
+                Vector3 globalDistanceMove = boxCollider.transform.TransformDirection(localDistanceMove);
+
+                boxCollider.transform.localScale = new Vector3(distanceX, distanceY, distanceZ);
+                boxCollider.transform.position += globalDistanceMove;
+            }
+
 #if BAKERY_INCLUDED
             hiddenFields.Add("BakeryVolume");
 #endif
@@ -162,6 +210,21 @@ namespace VRCLightVolumes {
             GUILayout.EndHorizontal();
 
             serializedObject.ApplyModifiedProperties();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("Fit Volume To Room", buttonStyle))
+            {
+                LightVolume myBehavior = (LightVolume)target;
+                // BoxCollider myCollider = myBehavior.gameObject.GetComponent<BoxCollider>();
+                Transform myTransform = myBehavior.gameObject.transform;
+                Undo.RecordObject(myBehavior.gameObject.transform, "Change Collider");
+                //  Undo.RecordObject(myCollider, "Change Size");
+                FitColliderToRoom(ref myTransform);
+
+            }
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
 
         }
 
