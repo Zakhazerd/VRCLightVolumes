@@ -151,26 +151,60 @@ namespace VRCLightVolumes
                     
                     Vector3 probePosition = probePositions[probeIdx];
                     float distanceToLight = Vector3.Distance(probePosition, lightPosition);
-                    float farClip = distanceToLight + lightRadius + 0.001f; // Add a bit of wiggle room to avoid precision issues
+                    float farClip; 
 
-                    // Area lights need special handling
+                    // Check light types
                     bool isQuad = pixelLight.Type == PointLightVolume.LightType.AreaLight;
+                    bool isDirectional = pixelLight.Type == PointLightVolume.LightType.DirectionalLight;
                     
                     // Calculate model, view, and projection matrices
                     Matrix4x4 lightToWorld;
-                    float fov;
-                    if (isQuad) {
-                        lightToWorld = Matrix4x4.TRS(lightPosition, pixelLight.transform.rotation, pixelLight.transform.lossyScale); // Model, quad
-                        fov = AreaLightFOV(probePosition, lightPosition, pixelLight.transform.right, pixelLight.transform.up, pixelLightAreas[lightIndex]);
+                    Matrix4x4 worldToProbe;
+                    Matrix4x4 probeToClip;
+                    
+                    if (isDirectional) {
+                        Vector3 lightForward = pixelLight.transform.forward;
+                        // For directional, the probe looks TOWARDS the light source (opposite of the light's forward direction)
+                        Vector3 lookTarget = probePosition - lightForward; 
+                        
+                        // Prevent up-vector collinearity issues if the light is pointing straight down/up
+                        Vector3 upVec = Mathf.Abs(Vector3.Dot(lightForward, Vector3.up)) > 0.99f ? Vector3.forward : Vector3.up;
+                        Matrix4x4 probeToWorld = Matrix4x4.LookAt(probePosition, lookTarget, upVec);
+                        
+                        // Convert to Unity's camera view space (flips Z axis)
+                        Matrix4x4 zFlipMatrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(1, 1, -1));
+                        worldToProbe = zFlipMatrix * probeToWorld.inverse; // View
+                        
+                        // Projection (Orthographic)
+                        farClip = pixelLight.Range; // Use Range to define how far back we capture occluders
+                        float orthoSize = lightRadius; // Represents the "width" of our bake ray capture area
+                        probeToClip = Matrix4x4.Ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, 0.01f, farClip);
+                        
+                        // Setup the "White Pass" mesh. Instead of a sphere, we put a massive quad at the far clip plane
+                        Vector3 quadPos = probePosition - lightForward * (farClip * 0.95f);
+                        Quaternion quadRot = Quaternion.LookRotation(lightForward); // Faces the probe
+                        Vector3 quadScale = new Vector3(orthoSize * 2.5f, orthoSize * 2.5f, 1); // Scaled slightly larger to prevent edge bleed
+                        lightToWorld = Matrix4x4.TRS(quadPos, quadRot, quadScale);
+
                     } else {
-                        lightToWorld = Matrix4x4.TRS(lightPosition, Quaternion.identity, 2 * lightRadius * Vector3.one); // Model, point
-                        fov = 2.0f * Mathf.Asin(Mathf.Clamp(lightRadius / distanceToLight, -1, 1)) * Mathf.Rad2Deg;
+                        // Original Perspective logic for Point & Area lights
+                        farClip = distanceToLight + lightRadius + 0.001f; // Add a bit of wiggle room to avoid precision issues
+                        float fov;
+
+                        if (isQuad) {
+                            lightToWorld = Matrix4x4.TRS(lightPosition, pixelLight.transform.rotation, pixelLight.transform.lossyScale); // Model, quad
+                            fov = AreaLightFOV(probePosition, lightPosition, pixelLight.transform.right, pixelLight.transform.up, pixelLightAreas[lightIndex]);
+                        } else {
+                            lightToWorld = Matrix4x4.TRS(lightPosition, Quaternion.identity, 2 * lightRadius * Vector3.one); // Model, point
+                            fov = 2.0f * Mathf.Asin(Mathf.Clamp(lightRadius / distanceToLight, -1, 1)) * Mathf.Rad2Deg;
+                        }
+
+                        fov = Mathf.Min(fov, 179);
+                        Matrix4x4 probeToWorld = Matrix4x4.LookAt(probePosition, lightPosition, Vector3.up);
+                        Matrix4x4 yFlipMatrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(1, 1, -1));
+                        worldToProbe = yFlipMatrix * probeToWorld.inverse; // View
+                        probeToClip = Matrix4x4.Perspective(fov, 1, 0.01f, farClip); // Projection
                     }
-                    fov = Mathf.Min(fov, 179);
-                    Matrix4x4 probeToWorld = Matrix4x4.LookAt(probePosition, lightPosition, Vector3.up);
-                    Matrix4x4 yFlipMatrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(1, 1, -1));
-                    Matrix4x4 worldToProbe = yFlipMatrix * probeToWorld.inverse; // View
-                    Matrix4x4 probeToClip = Matrix4x4.Perspective(fov, 1, 0.01f, farClip); // Projection
 
                     // Cull occluders
                     GeometryUtility.CalculateFrustumPlanes(probeToClip * worldToProbe, cullingPlanes);
@@ -180,18 +214,19 @@ namespace VRCLightVolumes
                             occluderIndices.Add(occluderIdx);
                         }
                     }
+
                     // If no potential occluders - the probe is fully unoccluded, so skip doing any work.
                     if (occluderIndices.Count == 0)
                         continue;
                     
-                    // Draw the light mesh first
+                    // Draw the light mesh first (Both Directional and Area use the quad mesh)
                     cmd.SetViewProjectionMatrices(worldToProbe, probeToClip);
                     cmd.SetRenderTarget(tempRT);
                     cmd.ClearRenderTarget(true, true, Color.black);
-                    cmd.DrawMesh(isQuad ? quadMesh : sphereMesh, lightToWorld, whiteMat);
+                    cmd.DrawMesh(isQuad || isDirectional ? quadMesh : sphereMesh, lightToWorld, whiteMat);
                     cmd.SetRenderTarget(nullRT);
                     
-                    // Count unocccluded pixels - this is the total area of the light
+                    // Count unoccluded pixels - this is the total area of the light
                     cmd.SetComputeIntParam(countShader, ShaderConstants.CountIndexID, sampleIndex * 2 + 0);
                     cmd.DispatchCompute(countShader, countKernel, tempRT.width / (int)countKernelX, tempRT.height / (int)countKernelY, 1);
                     
@@ -459,12 +494,15 @@ namespace VRCLightVolumes
                     // Check if the probe is in range of the light
                     Vector3 lightPosition = light.transform.position;
                     float lightRadius = shadowLightInfluenceRadii[lightIdx];
-                    if (Vector3.Distance(probePositions[probeIdx], lightPosition) > lightRadius)
-                        continue;
-                    
-                    // Area lights only affect probes in front of them
-                    if (light.Type == PointLightVolume.LightType.AreaLight && Vector3.Dot(light.transform.forward, (probePositions[probeIdx] - lightPosition).normalized) < 0.0f)
-                        continue;
+                    if (light.Type != PointLightVolume.LightType.DirectionalLight) // Skip Checks for Directional
+                    {
+                        if (Vector3.Distance(probePositions[probeIdx], lightPosition) > lightRadius)
+                            continue;
+
+                        // Area lights only affect probes in front of them
+                        if (light.Type == PointLightVolume.LightType.AreaLight && Vector3.Dot(light.transform.forward, (probePositions[probeIdx] - lightPosition).normalized) < 0.0f)
+                            continue;
+                    }
                     
                     // Assign the light to the probe's shadowmask slot
                     perProbeLights[probeIdx * 4 + Mathf.Clamp(shadowmaskIndex, 0, 3)] = lightIdx;

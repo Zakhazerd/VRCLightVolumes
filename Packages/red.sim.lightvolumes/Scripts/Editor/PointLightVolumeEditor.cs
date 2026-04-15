@@ -29,7 +29,19 @@ namespace VRCLightVolumes {
                 hiddenFields.Add("Angle");
                 hiddenFields.Add("Falloff");
             }
-
+            if (PointLightVolume.Type == PointLightVolume.LightType.DirectionalLight)
+            {
+                hiddenFields.Add("Dynamic");
+                hiddenFields.Add("Angle");
+                hiddenFields.Add("Falloff");
+                hiddenFields.Add("Shape");
+                hiddenFields.Add("Range");
+                hiddenFields.Add("FalloffLUT");
+                hiddenFields.Add("Cubemap");
+                hiddenFields.Add("Cookie");
+                hiddenFields.Add("LightSourceSize");
+                hiddenFields.Add("DebugRange");
+            }
             if (PointLightVolume.Type == PointLightVolume.LightType.AreaLight) {
                 hiddenFields.Add("Angle");
                 hiddenFields.Add("Falloff");
@@ -143,7 +155,7 @@ namespace VRCLightVolumes {
                     DrawSpotLight(origin, forward, halfAngleRad, bounds, dirs);
                 }
 
-            } else { // Area light
+            } else if (PointLightVolume.Type != PointLightVolume.LightType.DirectionalLight){ // Area light //Don't Draw anything for directional
 
                 float x = Mathf.Max(Mathf.Abs(pointLightVolume.transform.lossyScale.x), 0.001f);
                 float y = Mathf.Max(Mathf.Abs(pointLightVolume.transform.lossyScale.y), 0.001f);

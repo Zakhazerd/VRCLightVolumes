@@ -86,7 +86,7 @@ namespace VRCLightVolumes {
 
         // Returns currently used custom texture depending on the light parameters
         public Texture GetCustomTexture() {
-            if (Shape == LightShape.Parametric || Type == LightType.AreaLight) {
+            if (Shape == LightShape.Parametric || Type == LightType.AreaLight || Type == LightType.DirectionalLight) {
                 return null;
             } else if (Type == LightType.PointLight) {
                 if(Shape == LightShape.LUT) {
@@ -208,7 +208,7 @@ namespace VRCLightVolumes {
                     _pointLightVolumeBehaviour.SendCustomEvent("SetAreaLight");
                     _pointLightVolumeBehaviour.SendCustomEvent("UpdateRotation");
                 }
-
+                //Likely will not not to do anything here For Diretional
             } else {
 #endif
                 PointLightVolumeInstance.IsInitialized = true; // Always override to true in editor with no play mode!
@@ -308,6 +308,7 @@ namespace VRCLightVolumes {
             PointLight,
             SpotLight,
             AreaLight,
+            DirectionalLight,
         }
 
     }
