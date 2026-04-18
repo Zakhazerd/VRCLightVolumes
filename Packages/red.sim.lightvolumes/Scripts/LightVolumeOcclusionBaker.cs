@@ -105,6 +105,7 @@ namespace VRCLightVolumes
             List<Mesh> validOccluderMeshes = new List<Mesh>();
             List<Matrix4x4> validOccluderMatrices = new List<Matrix4x4>();
             List<Bounds> validOccluderBounds = new List<Bounds>();
+            List<Material[]> validOccluderMaterials = new List<Material[]>();
 
             for (int i = 0; i < occluders.Length; i++) {
                 MeshFilter meshFilter = occluders[i].GetComponent<MeshFilter>();
@@ -113,6 +114,7 @@ namespace VRCLightVolumes
                     validOccluderMeshes.Add(meshFilter.sharedMesh);
                     validOccluderMatrices.Add(Matrix4x4.TRS(occluders[i].transform.position, occluders[i].transform.rotation, occluders[i].transform.lossyScale));
                     validOccluderBounds.Add(occluders[i].bounds);
+                    validOccluderMaterials.Add(occluders[i].sharedMaterials);
                 }
             }
 
@@ -120,6 +122,7 @@ namespace VRCLightVolumes
             Mesh[] occluderMeshes = validOccluderMeshes.ToArray();
             Matrix4x4[] occluderMatrices = validOccluderMatrices.ToArray();
             Bounds[] occluderBounds = validOccluderBounds.ToArray();
+            Material[][] occluderMaterials = validOccluderMaterials.ToArray();
 
             // Set up command buffer with uniforms that don't change per probe
             using CommandBuffer cmd = new CommandBuffer();
@@ -232,8 +235,28 @@ namespace VRCLightVolumes
                     
                     // Draw each occluder
                     cmd.SetRenderTarget(tempRT);
-                    foreach (int occluderIdx in occluderIndices) {
-                        cmd.DrawMesh(occluderMeshes[occluderIdx], occluderMatrices[occluderIdx], blackMat);
+                    foreach (int occluderIdx in occluderIndices)
+                    {
+                        Mesh mesh = occluderMeshes[occluderIdx];
+                        Matrix4x4 matrix = occluderMatrices[occluderIdx];
+                        Material[] subMeshMaterials = occluderMaterials[occluderIdx];
+
+                        for (int s = 0; s < mesh.subMeshCount; s++)
+                        {
+                            // Skip submeshes with materials in the Transparent queue (3000+)
+                            if (s < subMeshMaterials.Length)
+                            {
+                                Material originalMat = subMeshMaterials[s];
+
+                                if (originalMat != null && originalMat.renderQueue >= 3000)
+                                {
+                                    continue;
+                                }
+                            }
+
+                            // Draw the specific submesh
+                            cmd.DrawMesh(mesh, matrix, blackMat, s);
+                        }
                     }
                     cmd.SetRenderTarget(nullRT);
                     
