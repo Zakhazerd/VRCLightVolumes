@@ -179,7 +179,7 @@ namespace VRCLightVolumes
                         worldToProbe = zFlipMatrix * probeToWorld.inverse; // View
                         
                         // Projection (Orthographic)
-                        farClip = pixelLight.Range; // Use Range to define how far back we capture occluders
+                        farClip = 1000; // Directional lights have no range this is just a limit
                         float orthoSize = lightRadius; // Represents the "width" of our bake ray capture area
                         probeToClip = Matrix4x4.Ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, 0.01f, farClip);
                         
