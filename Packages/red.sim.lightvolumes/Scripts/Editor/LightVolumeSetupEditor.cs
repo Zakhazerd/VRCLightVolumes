@@ -236,15 +236,35 @@ namespace VRCLightVolumes {
 
             GUILayout.Space(10);
 
-            if (LVUtils.IsInPrefabAsset(_lightVolumeSetup)) {
+            if (LVUtils.IsInPrefabAsset(_lightVolumeSetup))
+            {
                 EditorGUILayout.HelpBox("This component is part of a prefab asset (not in the scene). Please, use one that is placed on your scene!", MessageType.Warning);
                 GUILayout.Space(10);
-            } else if (_isMultipleInstancesError) {
+            }
+            else if (_isMultipleInstancesError)
+            {
                 EditorGUILayout.HelpBox("Multiple Light Volume Managers detected in the scene. Please ensure only one is active to avoid unexpected behavior!", MessageType.Error);
                 GUILayout.Space(10);
-            }
 
-            ulong vCount = 0;
+            }
+            else
+            {
+                int directionalCount = 0;
+                foreach (var lightVolume in _lightVolumeSetup.PointLightVolumes)
+                {
+                    if (lightVolume != null && lightVolume.Type == PointLightVolume.LightType.DirectionalLight)
+                    {
+                        directionalCount++;
+                    }
+                }
+
+                if (directionalCount > 1)
+                {
+                    EditorGUILayout.HelpBox($"{directionalCount} Directional Lights detected. Please ensure only one directional light is in the scene!", MessageType.Warning);
+                    GUILayout.Space(10);
+                }
+            }
+                ulong vCount = 0;
             if (_lightVolumeSetup.LightVolumeManager != null && _lightVolumeSetup.LightVolumeManager.LightVolumeAtlasBase != null) {
                 var tex = _lightVolumeSetup.LightVolumeManager.LightVolumeAtlasBase;
                 vCount = (ulong)tex.width * (ulong)tex.height * (ulong)tex.depth;
