@@ -1,6 +1,6 @@
 ﻿#ifndef VRC_LIGHT_VOLUMES_INCLUDED
 #define VRC_LIGHT_VOLUMES_INCLUDED
-#define VRCLV_VERSION 2
+#define VRCLV_VERSION 3
 #define VRCLV_MAX_VOLUMES_COUNT 32
 #define VRCLV_MAX_LIGHTS_COUNT 128
 
@@ -89,6 +89,10 @@ uniform float _UdonLightBrightnessCutoff;
 // We use this to take faster paths when no occlusion is needed.
 uniform float _UdonLightVolumeOcclusionCount;
 
+// Whether or not there is directional PLV in scene
+// Assume that it was baked properly into 0th shadowmask slot
+uniform float _UdonDirectionalLightVolume;
+    
 #ifndef SHADER_TARGET_SURFACE_ANALYSIS
 }
 #endif
@@ -889,13 +893,14 @@ float3 LightVolumeEvaluate(float3 worldNormal, float3 L0, float3 L1r, float3 L1g
 }
 
 // Calculates L1 SH based on the world position. Samples both light volumes and point lights.
-void LightVolumeSH(float3 worldPos, out float3 L0, out float3 L1r, out float3 L1g, out float3 L1b, float3 worldPosOffset = 0) {
-    L0 = 0; L1r = 0; L1g = 0; L1b = 0;
+void LightVolumeSH(float3 worldPos, out float3 L0, out float3 L1r, out float3 L1g, out float3 L1b, out float dirOcclusion, float3 worldPosOffset = 0) {
+    L0 = 0; L1r = 0; L1g = 0; L1b = 0; dirOcclusion = 1;
     if (_UdonLightVolumeEnabled == 0) {
         LV_SampleLightProbeDering(L0, L1r, L1g, L1b);
     } else {
         float4 occlusion = 1;
         LV_LightVolumeSH(worldPos + worldPosOffset, L0, L1r, L1g, L1b, occlusion);
+        dirOcclusion = lerp(1, occlusion.x, _UdonDirectionalLightVolume); // LV_LightVolumeSH gets occlusion regardless if pointlights exist
         LV_PointLightVolumeSH(worldPos, occlusion, L0, L1r, L1g, L1b);
     }
 }

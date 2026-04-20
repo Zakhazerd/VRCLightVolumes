@@ -37,8 +37,8 @@ Shader "Hidden/LV_DebugDisplayL1"
             {
                 float3 normalDir = normalize(i.worldNormal);
 
-                float3 L0 = 0; float3 L1r = 0; float3 L1g = 0; float3 L1b = 0;
-                LightVolumeSH(i.worldPos.xyz, L0, L1r, L1g, L1b);
+                float3 L0 = 0; float3 L1r = 0; float3 L1g = 0; float3 L1b = 0; float myOc = 1;
+                LightVolumeSH(i.worldPos.xyz, L0, L1r, L1g, L1b, myOc);
 
                 float3 result;
                 result.r = dot(L1r, normalDir) + L0.r;

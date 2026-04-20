@@ -94,7 +94,9 @@ Shader "Light Volume Samples/Light Volume PBR Cutout"
 			float3 temp_output_470_0 = ( _LightVolumesBias * World_Normal112 );
 			float3 temp_output_17_0_g3 = temp_output_470_0;
 			float3 worldPosOffset1_g3 = temp_output_17_0_g3;
-			LightVolumeSH( worldPos1_g3 , L01_g3 , L1r1_g3 , L1g1_g3 , L1b1_g3 , worldPosOffset1_g3 );
+			float myOc = 1;
+			LightVolumeSH( worldPos1_g3 , L01_g3 , L1r1_g3 , L1g1_g3 , L1b1_g3 , myOc, worldPosOffset1_g3 );
+			o.Albedo *= smoothstep(.45, .65, myOc);
 			float localLightVolumeAdditiveSH9_g4 = ( 0.0 );
 			float3 temp_output_6_0_g4 = ase_positionWS;
 			float3 worldPos9_g4 = temp_output_6_0_g4;
