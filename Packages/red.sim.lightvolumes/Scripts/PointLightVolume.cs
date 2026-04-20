@@ -207,9 +207,12 @@ namespace VRCLightVolumes {
                     // SetAreaLight()
                     _pointLightVolumeBehaviour.SendCustomEvent("SetAreaLight");
                     _pointLightVolumeBehaviour.SendCustomEvent("UpdateRotation");
+
+                } else if (Type == LightType.DirectionalLight) {
+                    _pointLightVolumeBehaviour.SendCustomEvent("SetDirectionalLight");
                 }
-                //Likely will not not to do anything here For Diretional
-            } else {
+
+                } else {
 #endif
                 PointLightVolumeInstance.IsInitialized = true; // Always override to true in editor with no play mode!
                 PointLightVolumeInstance.LightVolumeManager = LightVolumeSetup.LightVolumeManager;
@@ -250,7 +253,9 @@ namespace VRCLightVolumes {
                     PointLightVolumeInstance.SetAreaLight();
                     PointLightVolumeInstance.UpdateRotation();
                 }
-
+                else if (Type == LightType.DirectionalLight){ // Directional light
+                    PointLightVolumeInstance.SetDirectionalLight();
+                }
 #if UNITY_EDITOR
                 // Mark changes to ensure prefab modifications are recorded
                 LVUtils.MarkDirty(PointLightVolumeInstance);

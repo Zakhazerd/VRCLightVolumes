@@ -102,14 +102,19 @@ namespace VRCLightVolumes {
         
         // Checks if it's a point light
         public bool IsPointLight() {
-            return PositionData.w >= 0 && AngleData <= 1.5;
+            return PositionData.w >= 0 && AngleData <= 1.5; // -1 - 1 range
         }
 
         // Checks if it's an area light
         public bool IsAreaLight() {
-            return PositionData.w >= 0 && AngleData > 1.5;
+            return PositionData.w >= 0 && AngleData > 2; //Always greater than 2
         }
 
+        // Checks if it's a spotlight
+        public bool IsDirectionalLight()
+        {
+            return PositionData.w == 0 && AngleData > 1.5 && AngleData < 2;
+        }
         // Checks if uses custom texture
         public bool IsCustomTexture() {
             return CustomID < 0;
@@ -195,6 +200,12 @@ namespace VRCLightVolumes {
             AngleData = 2 + Mathf.Max(Mathf.Abs(transform.lossyScale.y), 0.001f); // Add 2 to get out of [-1; 1] codomain of cosine
             MarkRangeDirtyAndRequestUpdate();
         }
+        public void SetDirectionalLight()
+        {
+            PositionData.w = 0;
+            AngleData = 1.6f; //
+            MarkRangeDirtyAndRequestUpdate();
+        }
 
         // Sets light source color
         public void SetColor(Color color) {
@@ -275,6 +286,9 @@ namespace VRCLightVolumes {
                 SquaredRange = ComputeAreaLightSquaredBoundingSphere(Mathf.Abs(SquaredScale / PositionData.w), AngleData - 2, Color, Intensity * Mathf.PI, cutoff);
             } else if(IsLut()) { // LUT - regualar squared range
                 SquaredRange = Mathf.Abs(SquaredScale / PositionData.w);
+            }
+            else if (IsDirectionalLight()) {
+                SquaredRange = 0; //Always culled for previous versions
             } else { // Spot and Point light squared distance math
                 SquaredRange = ComputePointLightSquaredBoundingSphere(Color, Intensity, Mathf.Abs(SquaredScale * PositionData.w), cutoff);
             }
