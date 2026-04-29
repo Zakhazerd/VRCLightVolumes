@@ -905,6 +905,21 @@ void LightVolumeSH(float3 worldPos, out float3 L0, out float3 L1r, out float3 L1
     }
 }
 
+void LightVolumeSH(float3 worldPos, out float3 L0, out float3 L1r, out float3 L1g, out float3 L1b, float3 worldPosOffset = 0) // Temporary to not break unupdated shaders reliant on include
+{
+    L0 = 0; L1r = 0; L1g = 0; L1b = 0;
+    if (_UdonLightVolumeEnabled == 0)
+    {
+        LV_SampleLightProbeDering(L0, L1r, L1g, L1b);
+    }
+    else
+    {
+        float4 occlusion = 1;
+        LV_LightVolumeSH(worldPos + worldPosOffset, L0, L1r, L1g, L1b, occlusion);
+        LV_PointLightVolumeSH(worldPos, occlusion, L0, L1r, L1g, L1b);
+    }
+}
+
 // Calculates L1 SH based on the world position from additive volumes only. Samples both light volumes and point lights.
 void LightVolumeAdditiveSH(float3 worldPos, out float3 L0, out float3 L1r, out float3 L1g, out float3 L1b, float3 worldPosOffset = 0) {
     L0 = 0; L1r = 0; L1g = 0; L1b = 0;

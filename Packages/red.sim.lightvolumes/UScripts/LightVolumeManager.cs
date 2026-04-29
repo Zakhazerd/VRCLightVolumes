@@ -73,6 +73,9 @@ namespace VRCLightVolumes {
         private Vector4[] _pointLightDirection;
         private Vector4[] _pointLightCustomId;
 
+        // Directional Light data
+        private int directionalLightVolume = 0;
+
         // Legacy support Data
         private Matrix4x4[] _invWorldMatrix = new Matrix4x4[0];
         private Vector4[] _boundsUvw = new Vector4[0];
@@ -113,6 +116,8 @@ namespace VRCLightVolumes {
         private int _pointLightCubeCountID;
         private int _pointLightTextureID;
         private int _lightBrightnessCutoffID;
+        // Directional Light
+        private int _directionalLightVolumeID;
         // Legacy support
         private int _areaLightBrightnessCutoffID;
         private int lightVolumeRotationID;
@@ -149,6 +154,8 @@ namespace VRCLightVolumes {
             _pointLightCubeCountID = VRCShader.PropertyToID("_UdonPointLightVolumeCubeCount");
             _pointLightTextureID = VRCShader.PropertyToID("_UdonPointLightVolumeTexture");
             _lightBrightnessCutoffID = VRCShader.PropertyToID("_UdonLightBrightnessCutoff");
+            // Directional Light
+            _directionalLightVolumeID = VRCShader.PropertyToID("_UdonDirectionalLightVolume");
             // Legacy support
             _areaLightBrightnessCutoffID = VRCShader.PropertyToID("_UdonAreaLightBrightnessCutoff");
             lightVolumeRotationID = VRCShader.PropertyToID("_UdonLightVolumeRotation");
@@ -430,6 +437,7 @@ namespace VRCLightVolumes {
                 }
             }
 
+            directionalLightVolume = (PointLightVolumeInstances[0].IsDirectionalLight()); // Should always be first in list // Needs to be cleared or set with changes
             IsRangeDirty = false; // reset range dirtyness
 
             // Initializing required arrays
@@ -535,6 +543,8 @@ namespace VRCLightVolumes {
                 VRCShader.SetGlobalTexture(_pointLightTextureID, CustomTextures);
             }
 
+            // Directional Light
+            VRCShader.SetGlobalFloat(_directionalLightVolumeID, directionalLightVolume);
             // Defines if Light Volumes enabled in scene. 0 if disabled. And a version number if enabled
             VRCShader.SetGlobalFloat(lightVolumeEnabledID, 1);
 
