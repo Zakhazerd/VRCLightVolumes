@@ -121,6 +121,13 @@ namespace VRCLightVolumes {
                     PointLightVolumes.Add(pointVolumes[i]);
                 }
             }
+            // Removing point light volumes that no more exists
+            for (int i = 0; i < PointLightVolumes.Count; i++) {
+                if (PointLightVolumes[i] == null || PointLightVolumes[i].CompareTag("EditorOnly")) {
+                    PointLightVolumes.RemoveAt(i);
+                    i--;
+                }
+            }
             PointLightVolumes.Sort((a, b) => {
                 bool aIsDirectional = a.Type == PointLightVolume.LightType.DirectionalLight;
                 bool bIsDirectional = b.Type == PointLightVolume.LightType.DirectionalLight;
@@ -129,13 +136,7 @@ namespace VRCLightVolumes {
                 if (!aIsDirectional && bIsDirectional) return 1;  // Move 'b' to the front
                 return 0; // Keep original order otherwise
             });
-            // Removing point light volumes that no more exists
-            for (int i = 0; i < PointLightVolumes.Count; i++) {
-                if (PointLightVolumes[i] == null || PointLightVolumes[i].CompareTag("EditorOnly")) {
-                    PointLightVolumes.RemoveAt(i);
-                    i--;
-                }
-            }
+
             SyncUdonScript();
         }
 
