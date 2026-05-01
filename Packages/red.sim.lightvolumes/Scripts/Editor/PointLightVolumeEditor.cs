@@ -41,6 +41,28 @@ namespace VRCLightVolumes {
                 hiddenFields.Add("Cookie");
                 hiddenFields.Add("LightSourceSize");
                 hiddenFields.Add("DebugRange");
+
+                Light[] sceneLights = FindObjectsOfType<Light>();
+                bool foundDirectional = false;
+
+                foreach (Light light in sceneLights)
+                {
+                    if (light.type == LightType.Directional)
+                    {
+                        foundDirectional = true;
+                        if (light.transform.rotation != PointLightVolume.transform.rotation)
+                        {
+                            EditorGUILayout.HelpBox("This volume is set to Directional Light, but its transform does not match the scene's Directional Light.", MessageType.Warning);
+                            break;
+                        }
+                    }
+                }
+
+               if (!foundDirectional)
+                {
+                    EditorGUILayout.HelpBox("This volume is set to Directional Light, but no Directional Light was found in the scene.", MessageType.Warning);
+                }
+
             }
             if (PointLightVolume.Type == PointLightVolume.LightType.AreaLight) {
                 hiddenFields.Add("Angle");
