@@ -12,13 +12,18 @@ namespace VRCLightVolumes {
         public Vector3[] BoundsUvwMax;
     }
 
+    public enum TexturePackingStrategy {
+        MinimumVRAM,
+        MinimumDepth,
+    }
+
     public static class Texture3DAtlasGenerator {
 
         const int maxAtlasSize = 2048;
 
         public static event Action<LightVolume[]> OnPreAtlasCreate;
 
-        public static IEnumerator CreateAtlas(LightVolume[] volumes, Action<Atlas3D> onComplete, int downscaleCount = 0) {
+        public static IEnumerator CreateAtlas(LightVolume[] volumes, Action<Atlas3D> onComplete, int downscaleCount = 0, TexturePackingStrategy packingStrategy = TexturePackingStrategy.MinimumVRAM) {
 
             Texture3D[] texs = null;
             const int padding = 1;
@@ -155,6 +160,7 @@ namespace VRCLightVolumes {
 
                     Vector3Int bestPos = Vector3Int.zero;
                     int bestVol = int.MaxValue;
+                    int bestD = int.MaxValue;
 
                     List<int> xCand = new List<int> { 0 };
                     List<int> yCand = new List<int> { 0 };
@@ -185,7 +191,14 @@ namespace VRCLightVolumes {
 
                                 int vol = newW * newH * newD;
 
-                                if (vol < bestVol) { bestVol = vol; bestPos = new Vector3Int(x, y, z); }
+                                switch (packingStrategy) {
+                                    case TexturePackingStrategy.MinimumVRAM:
+                                        if (vol < bestVol) { bestVol = vol; bestPos = new Vector3Int(x, y, z); }
+                                        break;
+                                    case TexturePackingStrategy.MinimumDepth:
+                                        if (newD < bestD || (newD == bestD && vol < bestVol)) { bestVol = vol; bestD = newD; bestPos = new Vector3Int(x, y, z); }
+                                        break;
+                                }
                             }
                         }
                         yield return null;
