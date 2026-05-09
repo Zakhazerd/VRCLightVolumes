@@ -39,6 +39,10 @@ namespace VRCLightVolumes {
         public float SquaredRange = 1;
         [Tooltip("Average squared lossy scale of the light. Light Source Size gets multiplied by it at the end. Updates with UpdateTransform() method.")]
         public float SquaredScale = 1;
+        [Tooltip("This area light will bake its shadow for an LTGCI Screen")]
+        public bool LTCGIProxy = false;
+        [Tooltip("The LTGCI Screen element number")]
+        public int LTGCIScreenElement = 0;
         [Tooltip("Reference to the Light Volume Manager. Needed for runtime initialization.")]
         public LightVolumeManager LightVolumeManager;
 

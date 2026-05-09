@@ -28,6 +28,8 @@ namespace VRCLightVolumes {
             if(PointLightVolume.Type == PointLightVolume.LightType.PointLight) {
                 hiddenFields.Add("Angle");
                 hiddenFields.Add("Falloff");
+                hiddenFields.Add("LTCGIProxy");
+                hiddenFields.Add("LTCGIScreenElement");
             }
             if (PointLightVolume.Type == PointLightVolume.LightType.DirectionalLight)
             {
@@ -41,7 +43,8 @@ namespace VRCLightVolumes {
                 hiddenFields.Add("Cookie");
                 hiddenFields.Add("LightSourceSize");
                 hiddenFields.Add("DebugRange");
-
+                                hiddenFields.Add("LTCGIProxy");
+                hiddenFields.Add("LTCGIScreenElement");
                 Light[] sceneLights = FindObjectsOfType<Light>();
                 bool foundDirectional = false;
 
@@ -73,8 +76,21 @@ namespace VRCLightVolumes {
                 hiddenFields.Add("Cubemap");
                 hiddenFields.Add("Cookie");
                 hiddenFields.Add("LightSourceSize");
-            }
+                if(PointLightVolume.BakedShadows == false) // This feature would only be used with shadow baking
+                {
+                    hiddenFields.Add("LTCGIProxy");
+                    if (PointLightVolume.LTCGIProxy == false)
+                    {
+                        hiddenFields.Add("LTCGIScreenElement");
+                    }
+                }
 
+            }
+            if (PointLightVolume.Type != PointLightVolume.LightType.AreaLight)
+            {
+                hiddenFields.Add("LTCGIProxy");
+                hiddenFields.Add("LTCGIScreenElement");
+            }
             if (PointLightVolume.Shape == PointLightVolume.LightShape.Parametric) {
                 hiddenFields.Add("FalloffLUT");
                 hiddenFields.Add("Cubemap");

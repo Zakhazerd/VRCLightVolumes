@@ -1,3 +1,4 @@
+//#define BitDebug
 using UnityEngine;
 using System;
 using System.Collections.Generic;
@@ -63,6 +64,8 @@ namespace VRCLightVolumes {
         [Header("Debug")]
         [Tooltip("Removes all Light Volume scripts in play mode, except Udon components. Useful for testing in a clean setup, just like in VRChat. For example, Auto Update Volumes and Dynamic Light Volumes will work just like in VRChat.")]
         public bool DestroyInPlayMode = false;
+        [HideInInspector] public uint LTCGIBitmask = 0;
+        [HideInInspector] public uint LTCGIShadowBitmask = 0;
 
         [SerializeField] public List<LightVolumeData> LightVolumeDataList = new List<LightVolumeData>();
 
@@ -415,7 +418,49 @@ namespace VRCLightVolumes {
 
         }
 
-        
+#if BitDebug
+        string ToReadableBinary(uint value)
+        {
+            string binary = Convert.ToString(value, 2).PadLeft(32, '0');
+
+            // Insert spaces every 8 bits (byte boundaries) for readability
+            for (int i = 24; i > 0; i -= 8)
+            {
+                binary = binary.Insert(i, " ");
+            }
+
+            return binary;
+        }
+
+        string ToReadableBinary(int value)
+        {
+            string binary = Convert.ToString(value, 2).PadLeft(32, '0');
+
+            // Insert spaces every 8 bits (byte boundaries) for readability
+            for (int i = 24; i > 0; i -= 8)
+            {
+                binary = binary.Insert(i, " ");
+            }
+
+            return binary;
+        }
+
+        string ToReadableBinary(float value)
+        {
+            // 1. Convert the raw bit pattern of the float into a uint
+            int bits = BitConverter.SingleToInt32Bits(value);
+            // 2. Convert that uint to a binary string
+            string binary = Convert.ToString(bits, 2).PadLeft(32, '0');
+
+            // 3. Format it for IEEE 754 readability: 
+            // [1 bit Sign] [8 bits Exponent] [23 bits Mantissa]
+            string sign = binary.Substring(0, 1);
+            string exponent = binary.Substring(1, 8);
+            string mantissa = binary.Substring(9, 23);
+
+            return $"{sign} | {exponent} | {mantissa}";
+        }
+#endif
 
         // Generates atlas and setups udon script
         public void GenerateAtlas() {
@@ -562,13 +607,23 @@ namespace VRCLightVolumes {
                     _lightVolumeManagerBehaviour.SetProgramVariable("LightVolumeInstances", lightVolumeInstances);
                 }
 
+                LTCGIBitmask = 0;
+                LTCGIShadowBitmask = 0;
                 if (PointLightVolumes.Count != 0) {
                     var instances = GetPointLightVolumeInstances();
                     UdonBehaviour[] pointLightVolumeInstances = new UdonBehaviour[instances.Length];
                     for (int i = 0; i < instances.Length; i++) {
                         pointLightVolumeInstances[i] = instances[i].GetComponent<UdonBehaviour>();
+                        if (PointLightVolumes[i].LTCGIProxy && instances[i].ShadowmaskIndex >= 0) // If proxy not baked skip
+                        {
+                            LTCGIBitmask |= (uint)(1 << PointLightVolumes[i].LTCGIScreenElement);
+                            LTCGIShadowBitmask |= (uint)(instances[i].ShadowmaskIndex << PointLightVolumes[i].LTCGIScreenElement*2); // Only god knows if these bits cast correctly
+                        }
                     }
                     _lightVolumeManagerBehaviour.SetProgramVariable("PointLightVolumeInstances", pointLightVolumeInstances);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("DirectionalLightVolume", PointLightVolumes[0].Type == PointLightVolume.LightType.DirectionalLight ? 1 : 0);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("LTCGIBitmask", BitConverter.ToSingle(BitConverter.GetBytes(LTCGIBitmask)));
+                    _lightVolumeManagerBehaviour.SetProgramVariable("LTCGIShadowBitmask", BitConverter.ToSingle(BitConverter.GetBytes(LTCGIShadowBitmask)));
                 }
 
                 _lightVolumeManagerBehaviour.SendCustomEvent("UpdateVolumes");
@@ -585,8 +640,31 @@ namespace VRCLightVolumes {
                     LightVolumeManager.LightVolumeInstances = LightVolumeDataSorter.GetData(LightVolumeDataSorter.SortData(LightVolumeDataList));
                 }
 
+                LTCGIBitmask = 0;
+                LTCGIShadowBitmask = 0;
                 if (PointLightVolumes.Count != 0) {
+                    var instances = GetPointLightVolumeInstances();
+                    UdonBehaviour[] pointLightVolumeInstances = new UdonBehaviour[instances.Length];
+                    for (int i = 0; i < PointLightVolumes.Count; i++)
+                    {
+                        pointLightVolumeInstances[i] = instances[i].GetComponent<UdonBehaviour>();
+                        if (PointLightVolumes[i].LTCGIProxy)
+                        {
+                            LTCGIBitmask |= (uint)(1 << PointLightVolumes[i].LTCGIScreenElement);
+                            LTCGIShadowBitmask |= (uint)(instances[i].ShadowmaskIndex << PointLightVolumes[i].LTCGIScreenElement * 2);
+                        }
+                    }
+
+#if BitDebug
+                    Debug.Log($"LTCGI Bitmask: {ToReadableBinary(LTCGIBitmask)}");
+                    Debug.Log($"LTCGI Bitmask float: {ToReadableBinary(BitConverter.ToSingle(BitConverter.GetBytes(LTCGIBitmask)))}");
+                    Debug.Log($"Cast Shadow Bitmask: {ToReadableBinary(LTCGIShadowBitmask)}");
+                    Debug.Log($"Cast Shadow Bitmask Float: {ToReadableBinary(BitConverter.ToSingle(BitConverter.GetBytes(LTCGIShadowBitmask)))}");
+#endif
                     LightVolumeManager.PointLightVolumeInstances = GetPointLightVolumeInstances();
+                    LightVolumeManager.DirectionalLightVolume = PointLightVolumes[0].Type == PointLightVolume.LightType.DirectionalLight ? 1 : 0;
+                    LightVolumeManager.LTCGIBitmask = BitConverter.ToSingle(BitConverter.GetBytes(LTCGIBitmask)); // Interpret bits as literal do not cast
+                    LightVolumeManager.LTCGIShadowBitmask = BitConverter.ToSingle(BitConverter.GetBytes(LTCGIShadowBitmask)); // Anything above a 24 bit int would not cast correctly
                 }
 
                 LightVolumeManager.UpdateVolumes();

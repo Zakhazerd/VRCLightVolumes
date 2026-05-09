@@ -43,7 +43,7 @@ namespace VRCLightVolumes {
         [Tooltip("Cubemaps count that stored in CustomTextures. Cubemap array elements starts from the beginning, 6 elements each.")]
         public int CubemapsCount = 0;
         [HideInInspector] public bool IsRangeDirty = false;
-
+        [HideInInspector] public int DirectionalLightVolume = 0;
         private bool _isInitialized = false;
         private float _prevLightsBrightnessCutoff = 0.35f;
 #if UDONSHARP
@@ -52,6 +52,8 @@ namespace VRCLightVolumes {
         private Coroutine _updateCoroutine = null; // Coroutine that auto-updates volumes if auto-update enabled (Non-Udon only)
 #endif
 
+        [HideInInspector] public float LTCGIBitmask = 0;
+        [HideInInspector] public float LTCGIShadowBitmask = 0;
         // Light Volumes Data
         private int _enabledCount = 0;
         private int _lastEnabledCount = -1;
@@ -72,9 +74,6 @@ namespace VRCLightVolumes {
         private Vector4[] _pointLightColor;
         private Vector4[] _pointLightDirection;
         private Vector4[] _pointLightCustomId;
-
-        // Directional Light data
-        private int directionalLightVolume = 0;
 
         // Legacy support Data
         private Matrix4x4[] _invWorldMatrix = new Matrix4x4[0];
@@ -118,6 +117,9 @@ namespace VRCLightVolumes {
         private int _lightBrightnessCutoffID;
         // Directional Light
         private int _directionalLightVolumeID;
+        // LTCGI Support
+        private int _LTCGIScreenElementVolumeID;
+        private int _LTCGIScreenBitmaskID;
         // Legacy support
         private int _areaLightBrightnessCutoffID;
         private int lightVolumeRotationID;
@@ -156,6 +158,9 @@ namespace VRCLightVolumes {
             _lightBrightnessCutoffID = VRCShader.PropertyToID("_UdonLightBrightnessCutoff");
             // Directional Light
             _directionalLightVolumeID = VRCShader.PropertyToID("_UdonDirectionalLightVolume");
+            // LTCGI Support
+            _LTCGIScreenElementVolumeID = VRCShader.PropertyToID("_UdonLTCGIScreenElementVolume");
+            _LTCGIScreenBitmaskID = VRCShader.PropertyToID("_UdonLTCGIScreenBitmaskVolume");
             // Legacy support
             _areaLightBrightnessCutoffID = VRCShader.PropertyToID("_UdonAreaLightBrightnessCutoff");
             lightVolumeRotationID = VRCShader.PropertyToID("_UdonLightVolumeRotation");
@@ -436,8 +441,7 @@ namespace VRCLightVolumes {
                     instance.IsIterartedThrough = false;
                 }
             }
-
-            directionalLightVolume = (PointLightVolumeInstances[0].IsDirectionalLight()); // Should always be first in list // Needs to be cleared or set with changes
+            
             IsRangeDirty = false; // reset range dirtyness
 
             // Initializing required arrays
@@ -544,7 +548,9 @@ namespace VRCLightVolumes {
             }
 
             // Directional Light
-            VRCShader.SetGlobalFloat(_directionalLightVolumeID, directionalLightVolume);
+            VRCShader.SetGlobalFloat(_directionalLightVolumeID, DirectionalLightVolume);
+            VRCShader.SetGlobalFloat(_LTCGIScreenElementVolumeID, LTCGIBitmask);
+            VRCShader.SetGlobalFloat(_LTCGIScreenBitmaskID, LTCGIShadowBitmask);
             // Defines if Light Volumes enabled in scene. 0 if disabled. And a version number if enabled
             VRCShader.SetGlobalFloat(lightVolumeEnabledID, 1);
 

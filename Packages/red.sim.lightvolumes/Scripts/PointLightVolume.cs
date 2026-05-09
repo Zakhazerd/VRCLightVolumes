@@ -40,6 +40,10 @@ namespace VRCLightVolumes {
         public Cubemap Cubemap = null;
         [Tooltip("Shows overdrawing range gizmo. Less point light volumes intersections - more performance!")]
         public bool DebugRange = false;
+        [Tooltip("This area light will bake its shadow for an LTCGIS Screen")]
+        public bool LTCGIProxy = false;
+        [Tooltip("The LTCGIS Screen element number")]
+        public int LTCGIScreenElement = 0;
 
         public int CustomID = 0;
 
@@ -143,6 +147,8 @@ namespace VRCLightVolumes {
                 _pointLightVolumeBehaviour.SetProgramVariable("Color", Color);
                 _pointLightVolumeBehaviour.SetProgramVariable("Intensity", Intensity);
                 _pointLightVolumeBehaviour.SetProgramVariable("IsRangeDirty", true);
+                _pointLightVolumeBehaviour.SetProgramVariable("LTCGIProxy", (LTCGIProxy && Type == LightType.AreaLight));
+                _pointLightVolumeBehaviour.SetProgramVariable("LTCGIScreenElement", LTCGIScreenElement);
                 // Udon does not support methods with parameters, so under the hood, it's just some global variables.
                 // We can first set these parameters and then exetute a parameterless method.
                 if (Type == LightType.PointLight) { // Point light
@@ -221,7 +227,8 @@ namespace VRCLightVolumes {
                 PointLightVolumeInstance.Color = Color;
                 PointLightVolumeInstance.Intensity = Intensity;
                 PointLightVolumeInstance.IsRangeDirty = true;
-
+                PointLightVolumeInstance.LTCGIProxy = (LTCGIProxy && Type == LightType.AreaLight);
+                PointLightVolumeInstance.LTGCIScreenElement = LTCGIScreenElement;
                 if (Type == LightType.PointLight) { // Point light
                     if (Shape == LightShape.Custom && Cubemap != null) {
                         PointLightVolumeInstance.SetLightSourceSize(LightSourceSize);
