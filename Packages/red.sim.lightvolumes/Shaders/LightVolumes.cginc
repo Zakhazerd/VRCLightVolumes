@@ -144,9 +144,8 @@ void LV_QuaternionAxes(float4 q, out float3 xAxis, out float3 yAxis, out float3 
     zAxis = float3(xz + wy, yz - wx, 1.0f - xx - yy);
 }
 
-// Rotates vector by Matrix 2x3
-float3 LV_MultiplyVectorByMatrix2x3(float3 v, float3 r0, float3 r1) {
-    float3 r2 = cross(r0, r1);
+// Rotates vector by Matrix 3x3 with precomputed third axis
+float3 LV_MultiplyVectorByMatrix3x3(float3 v, float3 r0, float3 r1, float3 r2) {
     return float3(dot(v, r0), dot(v, r1), dot(v, r2));
 }
 
@@ -525,9 +524,10 @@ void LV_SampleVolume(uint id, float3 localUVW, inout float3 L0, inout float3 L1r
         // Legacy to support older light volumes worlds! Commented code above will be used in future releases! Legacy!
         float3 r0 = _UdonLightVolumeRotation[id * 2].xyz;
         float3 r1 = _UdonLightVolumeRotation[id * 2 + 1].xyz;
-        L1r += LV_MultiplyVectorByMatrix2x3(l1r, r0, r1);
-        L1g += LV_MultiplyVectorByMatrix2x3(l1g, r0, r1);
-        L1b += LV_MultiplyVectorByMatrix2x3(l1b, r0, r1);
+        float3 r2 = cross(r0, r1);
+        L1r += LV_MultiplyVectorByMatrix3x3(l1r, r0, r1, r2);
+        L1g += LV_MultiplyVectorByMatrix3x3(l1g, r0, r1, r2);
+        L1b += LV_MultiplyVectorByMatrix3x3(l1b, r0, r1, r2);
     } else {
         L1r += l1r;
         L1g += l1g;
