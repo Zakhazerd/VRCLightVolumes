@@ -264,16 +264,28 @@ namespace VRCLightVolumes {
             GUILayout.Space(10);
 
             List<string> hiddenFields = new List<string>() { "m_Script", "LightVolumes", "PointLightVolumes", "LightVolumesWeights", "LightVolumeAtlas", "LightVolumeDataList", "LightVolumeManager", "_bakingModePrev", "IsLegacyUVWConverted" };
+            int plvCount = _lightVolumeSetup.PointLightVolumes.Count;
+            bool isDepthShadow = false;
+            for (int i = 0; i < plvCount; i++) {
+                PointLightVolume pointLightVolume = _lightVolumeSetup.PointLightVolumes[i];
+                if (pointLightVolume != null && pointLightVolume.BakeDepthShadows) {
+                    isDepthShadow = true;
+                    break;
+                }
+            }
 
             if (_lightVolumeSetup.LightVolumes.Count > 0)
                 _lightVolumesList.DoLayoutList();
 
-            if (_lightVolumeSetup.PointLightVolumes.Count > 0) {
+            if (plvCount > 0) {
                 _pointLightVolumesList.DoLayoutList();
             } else {
                 hiddenFields.Add("Resolution");
                 hiddenFields.Add("Format");
                 hiddenFields.Add("LightsBrightnessCutoff");
+            }
+            if (!isDepthShadow) {
+                hiddenFields.Add("DepthShadowResolution");
             }
 
             GUILayout.Space(-15);
@@ -322,6 +334,16 @@ namespace VRCLightVolumes {
                 }
                 GUI.enabled = true;
 
+            }
+
+            if (plvCount > 0) {
+                GUILayout.Space(5);
+
+                GUI.enabled = isDepthShadow;
+                if (GUILayout.Button(new GUIContent("Bake Depth Shadows", "Bakes experimental depth cubemap shadows for all point, spot and area Light Volumes with Bake Depth Shadows enabled."))) {
+                    _lightVolumeSetup.BakeDepthShadowCubemaps();
+                }
+                GUI.enabled = true;
             }
 
             GUILayout.EndHorizontal();

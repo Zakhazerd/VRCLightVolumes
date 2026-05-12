@@ -42,6 +42,12 @@ namespace VRCLightVolumes {
         public Texture CustomTextures;
         [Tooltip("Cubemaps count that stored in CustomTextures. Cubemap array elements starts from the beginning, 6 elements each.")]
         public int CubemapsCount = 0;
+        [Tooltip("Experimental texture array that stores baked per-light depth shadow cubemaps.")]
+        public Texture DepthShadowTextures;
+        [Tooltip("Depth shadow cubemaps count stored in DepthShadowTextures. Each cubemap uses 6 array elements.")]
+        public int DepthShadowCubemapsCount = 0;
+        [Tooltip("Resolution of one depth shadow cubemap face in pixels.")]
+        public float DepthShadowResolution = 128;
         [HideInInspector] public bool IsRangeDirty = false;
 
         private bool _isInitialized = false;
@@ -67,11 +73,14 @@ namespace VRCLightVolumes {
         // Point Lights Data
         private int _pointLightCount = 0;
         private int _lastPointLightCount = -1;
+        private int _activeDepthShadowCount = 0;
         private int[] _enabledPointIDs = new int[128];
         private Vector4[] _pointLightPosition;
         private Vector4[] _pointLightColor;
         private Vector4[] _pointLightDirection;
         private Vector4[] _pointLightCustomId;
+        private Vector4[] _pointLightDepthShadowData;
+        private Vector4[] _pointLightDepthShadowReprojectionData;
 
         // Legacy support Data
         private Matrix4x4[] _invWorldMatrix = new Matrix4x4[0];
@@ -112,6 +121,11 @@ namespace VRCLightVolumes {
         private int _pointLightCountID;
         private int _pointLightCubeCountID;
         private int _pointLightTextureID;
+        private int _pointLightDepthShadowDataID;
+        private int _pointLightDepthShadowReprojectionDataID;
+        private int _pointLightDepthShadowCountID;
+        private int _pointLightDepthShadowTextureID;
+        private int _pointLightDepthShadowResolutionID;
         private int _lightBrightnessCutoffID;
         // Legacy support
         private int _areaLightBrightnessCutoffID;
@@ -148,6 +162,11 @@ namespace VRCLightVolumes {
             _pointLightCustomIdID = VRCShader.PropertyToID("_UdonPointLightVolumeCustomID");
             _pointLightCubeCountID = VRCShader.PropertyToID("_UdonPointLightVolumeCubeCount");
             _pointLightTextureID = VRCShader.PropertyToID("_UdonPointLightVolumeTexture");
+            _pointLightDepthShadowDataID = VRCShader.PropertyToID("_UdonPointLightVolumeDepthShadowData");
+            _pointLightDepthShadowReprojectionDataID = VRCShader.PropertyToID("_UdonPointLightVolumeDepthShadowReprojectionData");
+            _pointLightDepthShadowCountID = VRCShader.PropertyToID("_UdonPointLightVolumeDepthShadowCount");
+            _pointLightDepthShadowTextureID = VRCShader.PropertyToID("_UdonPointLightVolumeDepthShadowTexture");
+            _pointLightDepthShadowResolutionID = VRCShader.PropertyToID("_UdonPointLightVolumeDepthShadowResolution");
             _lightBrightnessCutoffID = VRCShader.PropertyToID("_UdonLightBrightnessCutoff");
             // Legacy support
             _areaLightBrightnessCutoffID = VRCShader.PropertyToID("_UdonAreaLightBrightnessCutoff");
@@ -169,6 +188,8 @@ namespace VRCLightVolumes {
             VRCShader.SetGlobalVectorArray(_pointLightColorID, new Vector4[128]);
             VRCShader.SetGlobalVectorArray(_pointLightDirectionID, new Vector4[128]);
             VRCShader.SetGlobalVectorArray(_pointLightCustomIdID, new Vector4[128]);
+            VRCShader.SetGlobalVectorArray(_pointLightDepthShadowDataID, new Vector4[128]);
+            VRCShader.SetGlobalVectorArray(_pointLightDepthShadowReprojectionDataID, new Vector4[128]);
             // Legacy support
             VRCShader.SetGlobalVectorArray(lightVolumeRotationID, new Vector4[64]);
             VRCShader.SetGlobalVectorArray(lightVolumeUvwID, new Vector4[192]);
@@ -438,10 +459,13 @@ namespace VRCLightVolumes {
                 _pointLightColor = new Vector4[_pointLightCount];
                 _pointLightDirection = new Vector4[_pointLightCount];
                 _pointLightCustomId = new Vector4[_pointLightCount];
+                _pointLightDepthShadowData = new Vector4[_pointLightCount];
+                _pointLightDepthShadowReprojectionData = new Vector4[_pointLightCount];
                 _lastPointLightCount = _pointLightCount;
             }
 
             // Filling arrays with enabled point light volumes
+            _activeDepthShadowCount = 0;
             for (int i = 0; i < _pointLightCount; i++) {
                 PointLightVolumeInstance instance = PointLightVolumeInstances[_enabledPointIDs[i]];
 
@@ -468,6 +492,26 @@ namespace VRCLightVolumes {
                 _pointLightCustomId[i].x = instance.CustomID;
                 _pointLightCustomId[i].y = instance.ShadowmaskIndex;
                 _pointLightCustomId[i].z = instance.SquaredRange;
+                bool hasDepthShadow = DepthShadowCubemapsCount > 0 && instance.DepthShadowID >= 0 && instance.DepthShadowID < DepthShadowCubemapsCount;
+                if (hasDepthShadow) _activeDepthShadowCount++;
+                bool depthShadowFollowLight = hasDepthShadow && instance.DepthShadowFollowLight;
+                _pointLightCustomId[i].w = hasDepthShadow ? (depthShadowFollowLight ? -instance.DepthShadowID - 1 : instance.DepthShadowID + 1) : 0;
+                _pointLightDepthShadowData[i].x = hasDepthShadow ? Mathf.Max(instance.DepthShadowBias, 0) : 0;
+                _pointLightDepthShadowData[i].y = hasDepthShadow ? Mathf.Max(instance.DepthShadowNormalBias, 0) : 0;
+                _pointLightDepthShadowData[i].z = hasDepthShadow ? Mathf.Max(instance.DepthShadowBiasSmoothness, 0) : 0;
+                _pointLightDepthShadowData[i].w = hasDepthShadow && instance.DepthShadowSoftShadows ? 1 : 0;
+                if (depthShadowFollowLight) {
+                    Quaternion depthShadowRotation = instance.DepthShadowBakeRotation * Quaternion.Inverse(instance.transform.rotation);
+                    _pointLightDepthShadowReprojectionData[i].x = depthShadowRotation.x;
+                    _pointLightDepthShadowReprojectionData[i].y = depthShadowRotation.y;
+                    _pointLightDepthShadowReprojectionData[i].z = depthShadowRotation.z;
+                    _pointLightDepthShadowReprojectionData[i].w = depthShadowRotation.w;
+                } else {
+                    _pointLightDepthShadowReprojectionData[i].x = instance.DepthShadowBakePosition.x;
+                    _pointLightDepthShadowReprojectionData[i].y = instance.DepthShadowBakePosition.y;
+                    _pointLightDepthShadowReprojectionData[i].z = instance.DepthShadowBakePosition.z;
+                    _pointLightDepthShadowReprojectionData[i].w = hasDepthShadow ? 1 : 0;
+                }
             }
 
             bool isAtlas = LightVolumeAtlas != null;
@@ -523,16 +567,25 @@ namespace VRCLightVolumes {
             // Point Lights
             VRCShader.SetGlobalFloat(_pointLightCountID, _pointLightCount);
             VRCShader.SetGlobalFloat(_pointLightCubeCountID, CubemapsCount);
+            VRCShader.SetGlobalFloat(_pointLightDepthShadowCountID, _activeDepthShadowCount > 0 ? DepthShadowCubemapsCount : 0);
+            VRCShader.SetGlobalFloat(_pointLightDepthShadowResolutionID, DepthShadowResolution);
             if (_pointLightCount != 0) {
                 VRCShader.SetGlobalVectorArray(_pointLightColorID, _pointLightColor);
                 VRCShader.SetGlobalVectorArray(_pointLightPositionID, _pointLightPosition);
                 VRCShader.SetGlobalVectorArray(_pointLightDirectionID, _pointLightDirection);
                 VRCShader.SetGlobalVectorArray(_pointLightCustomIdID, _pointLightCustomId);
+                if (_activeDepthShadowCount > 0) {
+                    VRCShader.SetGlobalVectorArray(_pointLightDepthShadowDataID, _pointLightDepthShadowData);
+                    VRCShader.SetGlobalVectorArray(_pointLightDepthShadowReprojectionDataID, _pointLightDepthShadowReprojectionData);
+                }
                 VRCShader.SetGlobalFloat(_lightBrightnessCutoffID, LightsBrightnessCutoff);
                 VRCShader.SetGlobalFloat(_areaLightBrightnessCutoffID, LightsBrightnessCutoff); // Legacy
             }
             if(CustomTextures != null) {
                 VRCShader.SetGlobalTexture(_pointLightTextureID, CustomTextures);
+            }
+            if (_activeDepthShadowCount > 0 && DepthShadowTextures != null) {
+                VRCShader.SetGlobalTexture(_pointLightDepthShadowTextureID, DepthShadowTextures);
             }
 
             // Defines if Light Volumes enabled in scene. 0 if disabled. And a version number if enabled

@@ -30,6 +30,10 @@ namespace VRCLightVolumes {
         [Tooltip("The minimum brightness at a point due to lighting from a Point Light Volume, before the light is culled. Larger values will result in better performance, but light attenuation will be less physically correct.")]
         [Range(0.05f, 1f)] public float LightsBrightnessCutoff = 0.35f;
 
+        [Header("Depth Shadows")]
+        [Tooltip("Resolution used for experimental per-light depth shadow cubemaps.")]
+        public TextureArrayResolution DepthShadowResolution = TextureArrayResolution._128x128;
+
         [Header("Baking")]
         [Tooltip("Bakery usually gives better results and works faster.")]
 #if BAKERY_INCLUDED
@@ -86,10 +90,12 @@ namespace VRCLightVolumes {
         public bool IsLegacyUVWConverted = false; // Is legacy UVW fix applied. Only need to do it once, so it's a flag for that
 
         private TextureArrayResolution _resolutionPrev = TextureArrayResolution._128x128;
+        private TextureArrayResolution _depthShadowResolutionPrev = TextureArrayResolution._128x128;
         private TextureArrayFormat _formatPrev = TextureArrayFormat.RGBAHalf;
 #if UNITY_EDITOR
         private EditorCoroutine _generateAtlasCoroutine = null;
         private EditorCoroutine _generateTextureArrayCoroutine = null;
+        private EditorCoroutine _generateDepthShadowArrayCoroutine = null;
 #endif
         public void RefreshVolumesList() {
 
@@ -226,6 +232,98 @@ namespace VRCLightVolumes {
                 if (texArray != null) LVUtils.SaveAsAssetDelayed(texArray, $"{Path.GetDirectoryName(SceneManager.GetActiveScene().path)}/{SceneManager.GetActiveScene().name}/VRCLightVolumes/PointLightVolumeArray.asset");
 
                 _generateTextureArrayCoroutine = null;
+
+                SyncUdonScript();
+
+            }), this);
+
+        }
+
+        // Generates the experimental depth shadow cubemap array based on all baked PointLightVolumes.
+        List<PointLightVolume> _depthShadowVolumes = new List<PointLightVolume>();
+        public void GenerateDepthShadowTexturesArray() {
+
+            SetupDependencies();
+
+            if (LightVolumeManager == null || DontSync) return;
+
+            List<Texture> textures = new List<Texture>();
+            _depthShadowVolumes.Clear();
+
+            int count = PointLightVolumes.Count;
+            for (int i = 0; i < count; i++) {
+                PointLightVolume pointLightVolume = PointLightVolumes[i];
+                if (pointLightVolume == null) continue;
+                if (pointLightVolume.BakeDepthShadows && pointLightVolume.DepthShadowCubemap != null) {
+                    textures.Add(pointLightVolume.DepthShadowCubemap);
+                    _depthShadowVolumes.Add(pointLightVolume);
+                } else if (pointLightVolume.DepthShadowID != -1) {
+                    pointLightVolume.DepthShadowID = -1;
+                    pointLightVolume.SyncUdonScript();
+                    LVUtils.MarkDirty(pointLightVolume);
+                }
+            }
+
+            if (_generateDepthShadowArrayCoroutine != null) {
+                EditorCoroutineUtility.StopCoroutine(_generateDepthShadowArrayCoroutine);
+                _generateDepthShadowArrayCoroutine = null;
+            }
+
+            if (_depthShadowVolumes.Count == 0) {
+#if UDONSHARP
+                if (Application.isPlaying) {
+                    _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowTextures", null);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowCubemapsCount", 0);
+                } else {
+#endif
+                    LightVolumeManager.DepthShadowTextures = null;
+                    LightVolumeManager.DepthShadowCubemapsCount = 0;
+#if UDONSHARP
+                }
+#endif
+                SyncUdonScript();
+                return;
+            }
+
+            _generateDepthShadowArrayCoroutine = EditorCoroutineUtility.StartCoroutine(TextureArrayGenerator.CreateTexture2DArrayAsync(textures, (int)DepthShadowResolution, TextureFormat.RHalf, (texArray, ids) => {
+
+                if (DontSync) {
+                    _generateDepthShadowArrayCoroutine = null;
+                    return;
+                }
+
+                if (texArray != null) {
+                    for (int i = 0; i < ids.Length; i++) {
+                        if (_depthShadowVolumes[i] != null) {
+                            _depthShadowVolumes[i].DepthShadowID = ids[i];
+                            _depthShadowVolumes[i].SyncUdonScript();
+                            LVUtils.MarkDirty(_depthShadowVolumes[i]);
+                        }
+                    }
+                }
+#if UDONSHARP
+                if (Application.isPlaying) {
+                    _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowTextures", texArray);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowCubemapsCount", texArray != null ? texArray.depth / 6 : 0);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowResolution", (float)DepthShadowResolution);
+                } else {
+#endif
+                    LightVolumeManager.DepthShadowTextures = texArray;
+                    LightVolumeManager.DepthShadowCubemapsCount = texArray != null ? texArray.depth / 6 : 0;
+                    LightVolumeManager.DepthShadowResolution = (float)DepthShadowResolution;
+#if UDONSHARP
+                }
+#endif
+                if (texArray != null) {
+                    texArray.filterMode = FilterMode.Point;
+                    string assetPath = $"{Path.GetDirectoryName(SceneManager.GetActiveScene().path)}/{SceneManager.GetActiveScene().name}/VRCLightVolumes/PointLightVolumeDepthShadowArray.asset";
+                    if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath) != null) {
+                        AssetDatabase.DeleteAsset(assetPath);
+                    }
+                    LVUtils.SaveAsAssetDelayed(texArray, assetPath);
+                }
+
+                _generateDepthShadowArrayCoroutine = null;
 
                 SyncUdonScript();
 
@@ -370,6 +468,10 @@ namespace VRCLightVolumes {
                 _resolutionPrev = Resolution;
                 _formatPrev = Format;
                 GenerateCustomTexturesArray();
+            }
+            if (_depthShadowResolutionPrev != DepthShadowResolution) {
+                _depthShadowResolutionPrev = DepthShadowResolution;
+                GenerateDepthShadowTexturesArray();
             }
             if (!Application.isPlaying) {
                 LightVolumeManager.UpdateVolumes();
@@ -543,6 +645,7 @@ namespace VRCLightVolumes {
                 _lightVolumeManagerBehaviour.SetProgramVariable("SharpBounds", SharpBounds);
                 _lightVolumeManagerBehaviour.SetProgramVariable("AdditiveMaxOverdraw", AdditiveMaxOverdraw);
                 _lightVolumeManagerBehaviour.SetProgramVariable("AreaLightBrightnessCutoff", LightsBrightnessCutoff);
+                _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowResolution", (float)DepthShadowResolution);
 
                 if (LightVolumes.Count != 0) {
                     var instances = LightVolumeDataSorter.GetData(LightVolumeDataSorter.SortData(LightVolumeDataList));
@@ -561,7 +664,6 @@ namespace VRCLightVolumes {
                     }
                     _lightVolumeManagerBehaviour.SetProgramVariable("PointLightVolumeInstances", pointLightVolumeInstances);
                 }
-
                 _lightVolumeManagerBehaviour.SendCustomEvent("UpdateVolumes");
 
             } else {
@@ -571,6 +673,7 @@ namespace VRCLightVolumes {
                 LightVolumeManager.SharpBounds = SharpBounds;
                 LightVolumeManager.AdditiveMaxOverdraw = AdditiveMaxOverdraw;
                 LightVolumeManager.LightsBrightnessCutoff = LightsBrightnessCutoff;
+                LightVolumeManager.DepthShadowResolution = (float)DepthShadowResolution;
 
                 if (LightVolumes.Count != 0) {
                     LightVolumeManager.LightVolumeInstances = LightVolumeDataSorter.GetData(LightVolumeDataSorter.SortData(LightVolumeDataList));
@@ -703,6 +806,20 @@ namespace VRCLightVolumes {
                 }
             }
             if(isRebaked) GenerateAtlas();
+#endif
+        }
+
+        // Bakes all requested experimental per-light depth shadow cubemaps.
+        public void BakeDepthShadowCubemaps() {
+#if UNITY_EDITOR
+            bool isRebaked = false;
+            for (int i = 0; i < PointLightVolumes.Count; i++) {
+                PointLightVolume pointLightVolume = PointLightVolumes[i];
+                if (pointLightVolume == null || !pointLightVolume.BakeDepthShadows) continue;
+                bool isBaked = pointLightVolume.BakeDepthShadowCubemap($"| {pointLightVolume.gameObject.name} ({i}/{PointLightVolumes.Count})", false);
+                isRebaked = isRebaked || isBaked;
+            }
+            if (isRebaked) GenerateDepthShadowTexturesArray();
 #endif
         }
 

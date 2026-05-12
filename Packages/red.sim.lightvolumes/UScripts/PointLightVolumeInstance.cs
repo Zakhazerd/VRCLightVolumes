@@ -33,6 +33,22 @@ namespace VRCLightVolumes {
         public float AngleData;
         [Tooltip("Index of the shadowmask channel used by this light. -1 means no shadowmask.")]
         public sbyte ShadowmaskIndex = -1;
+        [Tooltip("Index of the experimental depth shadow cubemap used by this light. -1 means no depth shadow.")]
+        public float DepthShadowID = -1;
+        [Tooltip("Moves and rotates the experimental depth shadow cubemap together with this light.")]
+        public bool DepthShadowFollowLight = false;
+        [Tooltip("Enables 4-sample PCF filtering for this light's experimental depth shadow cubemap.")]
+        public bool DepthShadowSoftShadows = true;
+        [Tooltip("World-space bias in meters applied when comparing shaded points against this light's experimental depth shadow cubemap.")]
+        [Min(0)] public float DepthShadowBias = 0.03f;
+        [Tooltip("World-space normal bias in meters applied to shaded points before sampling this light's experimental depth shadow cubemap.")]
+        [Min(0)] public float DepthShadowNormalBias = 0f;
+        [Tooltip("World-space smoothing radius in meters around this light's experimental depth shadow bias threshold.")]
+        [Min(0)] public float DepthShadowBiasSmoothness = 0.02f;
+        [Tooltip("World-space position where the experimental depth shadow cubemap was baked.")]
+        public Vector3 DepthShadowBakePosition = Vector3.zero;
+        [Tooltip("World-space rotation where the experimental depth shadow cubemap was baked.")]
+        public Quaternion DepthShadowBakeRotation = Quaternion.identity;
         [Tooltip("True if this Point Light Volume added to the Point Light Volumes array in LightVolumeManager. Should be always true for the Point Light Volumes placed in editor. Helps to initialize Point Light Volumes spawned in runtime.")]
         public bool IsInitialized = false;
         [Tooltip("Squared range after which light will be culled. Should be recalculated by executing UpdateRange() method.")]
