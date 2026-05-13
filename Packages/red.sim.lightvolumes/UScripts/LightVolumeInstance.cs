@@ -54,14 +54,11 @@ namespace VRCLightVolumes {
         public bool IsRotated = false;
         [Tooltip("True if the volume has baked occlusion.")]
         public bool BakeOcclusion = false;
-        [Tooltip("True if this Light Volume added to the Light Volumes array in LightVolumeManager. Should be always true for the Light Volumes placed in editor. Helps to initialize Light Volumes spawned in runtime.")]
+        [Tooltip("True if this Light Volume is registered in the Light Volume Manager array. Disabled objects can be unregistered and will register again on enable.")]
         public bool IsInitialized = false;
         [Tooltip("Reference to the Light Volume Manager. Needed for runtime initialization.")]
         public LightVolumeManager LightVolumeManager;
 
-        [HideInInspector] // Sets to true by the manager to check if we already iterated through this light. Prevents adding the same lights to the array muntiple times.
-        public bool IsIterartedThrough = false;
-        
         private Color _old_Color = Color.white;
         private float _old_Intensity = 1f;
 
@@ -103,10 +100,16 @@ namespace VRCLightVolumes {
         }
 
         private void OnEnable() {
+            if (LightVolumeManager != null) {
+                LightVolumeManager.InitializeLightVolume(this);
+            }
             RequestUpdateVolumes();
         }
 
         private void OnDisable() {
+            if (LightVolumeManager != null) {
+                LightVolumeManager.UnregisterLightVolume(this);
+            }
             RequestUpdateVolumes();
         }
 

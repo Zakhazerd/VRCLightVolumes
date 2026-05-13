@@ -18,6 +18,12 @@ namespace VRCLightVolumes {
 #endif
     {
         public const float Version = 2; // VRC Light Volumes Current version. This value used in shaders (_UdonLightVolumeEnabled) to determine which features are can be used
+        private const int MaxLightVolumeCount = 32;
+        private const int MaxPointLightCount = 128;
+        private const int MaxLightVolumeRotationVectors = MaxLightVolumeCount * 2;
+        private const int MaxLightVolumeUvwScaleVectors = MaxLightVolumeCount * 3;
+        private const int MaxLightVolumeLegacyUvwVectors = MaxLightVolumeCount * 6;
+
         [Tooltip("Combined texture containing all Light Volumes' textures.")]
         public Texture LightVolumeAtlas;
         [Tooltip("Combined Texture3D containing all baked Light Volume data. This field is not used at runtime, see LightVolumeAtlas instead. It specifies the base for the post process chain, if given.")]
@@ -51,6 +57,7 @@ namespace VRCLightVolumes {
         [HideInInspector] public bool IsRangeDirty = false;
 
         private bool _isInitialized = false;
+        private bool _isRegistrySanitized = false;
         private float _prevLightsBrightnessCutoff = 0.35f;
 #if UDONSHARP
         private bool _isUpdateRequested = false; // Flag that specifies if volumes update requested.
@@ -60,35 +67,33 @@ namespace VRCLightVolumes {
 
         // Light Volumes Data
         private int _enabledCount = 0;
-        private int _lastEnabledCount = -1;
         private int _additiveCount = 0;
         private int _occlusionCount = 0;
 
-        private Vector4[] _invLocalEdgeSmooth = new Vector4[0];
-        private Vector4[] _colors = new Vector4[0];
-        private Vector4[] _boundsUvwScale = new Vector4[0];
-        private Vector4[] _boundsOcclusionUvw = new Vector4[0];
-        private Vector4[] _relativeRotationQuaternion = new Vector4[0];
+        private Vector4[] _invLocalEdgeSmooth = new Vector4[MaxLightVolumeCount];
+        private Vector4[] _colors = new Vector4[MaxLightVolumeCount];
+        private Vector4[] _boundsUvwScale = new Vector4[MaxLightVolumeUvwScaleVectors];
+        private Vector4[] _boundsOcclusionUvw = new Vector4[MaxLightVolumeCount];
+        private Vector4[] _relativeRotationQuaternion = new Vector4[MaxLightVolumeCount];
 
         // Point Lights Data
         private int _pointLightCount = 0;
-        private int _lastPointLightCount = -1;
         private int _activeDepthShadowCount = 0;
-        private int[] _enabledPointIDs = new int[128];
-        private Vector4[] _pointLightPosition;
-        private Vector4[] _pointLightColor;
-        private Vector4[] _pointLightDirection;
-        private Vector4[] _pointLightCustomId;
-        private Vector4[] _pointLightDepthShadowData;
-        private Vector4[] _pointLightDepthShadowReprojectionData;
+        private int[] _enabledPointIDs = new int[MaxPointLightCount];
+        private Vector4[] _pointLightPosition = new Vector4[MaxPointLightCount];
+        private Vector4[] _pointLightColor = new Vector4[MaxPointLightCount];
+        private Vector4[] _pointLightDirection = new Vector4[MaxPointLightCount];
+        private Vector4[] _pointLightCustomId = new Vector4[MaxPointLightCount];
+        private Vector4[] _pointLightDepthShadowData = new Vector4[MaxPointLightCount];
+        private Vector4[] _pointLightDepthShadowReprojectionData = new Vector4[MaxPointLightCount];
 
         // Legacy support Data
-        private Matrix4x4[] _invWorldMatrix = new Matrix4x4[0];
-        private Vector4[] _boundsUvw = new Vector4[0];
-        private Vector4[] _relativeRotation = new Vector4[0];
+        private Matrix4x4[] _invWorldMatrix = new Matrix4x4[MaxLightVolumeCount];
+        private Vector4[] _boundsUvw = new Vector4[MaxLightVolumeLegacyUvwVectors];
+        private Vector4[] _relativeRotation = new Vector4[MaxLightVolumeRotationVectors];
 
         // Other
-        private int[] _enabledIDs = new int[32];
+        private int[] _enabledIDs = new int[MaxLightVolumeCount];
         private Vector4[] _boundsScale = new Vector4[3];
         private Vector4[] _bounds = new Vector4[6]; // Legacy
 
@@ -132,7 +137,7 @@ namespace VRCLightVolumes {
         private int lightVolumeRotationID;
         private int lightVolumeUvwID;
 
-        // Initializing gloabal shader arrays if needed 
+        // Initializing global shader arrays if needed
         private void TryInitialize() {
 
 #if !UNITY_EDITOR
@@ -177,22 +182,22 @@ namespace VRCLightVolumes {
             if (_isInitialized) return;
 #endif
             // Light Volumes
-            VRCShader.SetGlobalVectorArray(lightVolumeInvLocalEdgeSmoothID, new Vector4[32]);
-            VRCShader.SetGlobalVectorArray(lightVolumeColorID, new Vector4[32]);
-            VRCShader.SetGlobalMatrixArray(lightVolumeInvWorldMatrixID, new Matrix4x4[32]);
-            VRCShader.SetGlobalVectorArray(lightVolumeRotationQuaternionID, new Vector4[32]);
-            VRCShader.SetGlobalVectorArray(lightVolumeUvwScaleID, new Vector4[96]);
-            VRCShader.SetGlobalVectorArray(lightVolumeOcclusionUvwID, new Vector4[32]);
+            VRCShader.SetGlobalVectorArray(lightVolumeInvLocalEdgeSmoothID, _invLocalEdgeSmooth);
+            VRCShader.SetGlobalVectorArray(lightVolumeColorID, _colors);
+            VRCShader.SetGlobalMatrixArray(lightVolumeInvWorldMatrixID, _invWorldMatrix);
+            VRCShader.SetGlobalVectorArray(lightVolumeRotationQuaternionID, _relativeRotationQuaternion);
+            VRCShader.SetGlobalVectorArray(lightVolumeUvwScaleID, _boundsUvwScale);
+            VRCShader.SetGlobalVectorArray(lightVolumeOcclusionUvwID, _boundsOcclusionUvw);
             // Point Lights
-            VRCShader.SetGlobalVectorArray(_pointLightPositionID, new Vector4[128]);
-            VRCShader.SetGlobalVectorArray(_pointLightColorID, new Vector4[128]);
-            VRCShader.SetGlobalVectorArray(_pointLightDirectionID, new Vector4[128]);
-            VRCShader.SetGlobalVectorArray(_pointLightCustomIdID, new Vector4[128]);
-            VRCShader.SetGlobalVectorArray(_pointLightDepthShadowDataID, new Vector4[128]);
-            VRCShader.SetGlobalVectorArray(_pointLightDepthShadowReprojectionDataID, new Vector4[128]);
+            VRCShader.SetGlobalVectorArray(_pointLightPositionID, _pointLightPosition);
+            VRCShader.SetGlobalVectorArray(_pointLightColorID, _pointLightColor);
+            VRCShader.SetGlobalVectorArray(_pointLightDirectionID, _pointLightDirection);
+            VRCShader.SetGlobalVectorArray(_pointLightCustomIdID, _pointLightCustomId);
+            VRCShader.SetGlobalVectorArray(_pointLightDepthShadowDataID, _pointLightDepthShadowData);
+            VRCShader.SetGlobalVectorArray(_pointLightDepthShadowReprojectionDataID, _pointLightDepthShadowReprojectionData);
             // Legacy support
-            VRCShader.SetGlobalVectorArray(lightVolumeRotationID, new Vector4[64]);
-            VRCShader.SetGlobalVectorArray(lightVolumeUvwID, new Vector4[192]);
+            VRCShader.SetGlobalVectorArray(lightVolumeRotationID, _relativeRotation);
+            VRCShader.SetGlobalVectorArray(lightVolumeUvwID, _boundsUvw);
 
             _isInitialized = true;
         }
@@ -240,20 +245,30 @@ namespace VRCLightVolumes {
 
         private void Start() {
             _isInitialized = false;
+            _isRegistrySanitized = false;
             UpdateVolumes(); // Force update volumes first time at start even if auto update is disabled
         }
 
-        // Initrializes Light Volume by adding it to the light volumes array. Automalycally calls in runtime on object spawn
+        // Initializes Light Volume by adding it to the light volumes array. Automatically calls in runtime on object spawn
         public void InitializeLightVolume(LightVolumeInstance lightVolume) {
             int count = LightVolumeInstances.Length;
-            // If there's an empty element in the array, use it!
+            int emptyIndex = -1;
+            // If this volume is already registered, keep the existing slot. Otherwise remember the first free slot.
             for (int i = 0; i < count; i++) {
-                if (LightVolumeInstances[i] == null) {
-                    LightVolumeInstances[i] = lightVolume;
+                if (LightVolumeInstances[i] == lightVolume) {
                     lightVolume.LightVolumeManager = this;
                     lightVolume.IsInitialized = true;
                     return;
                 }
+                if (emptyIndex < 0 && LightVolumeInstances[i] == null) {
+                    emptyIndex = i;
+                }
+            }
+            if (emptyIndex >= 0) {
+                LightVolumeInstances[emptyIndex] = lightVolume;
+                lightVolume.LightVolumeManager = this;
+                lightVolume.IsInitialized = true;
+                return;
             }
             // No empty element, then increase the array size
             LightVolumeInstance[] targetArray = new LightVolumeInstance[count + 1];
@@ -263,16 +278,37 @@ namespace VRCLightVolumes {
             lightVolume.LightVolumeManager = this;
             LightVolumeInstances = targetArray;
         }
+
+        // Removes Light Volume references from the light volumes array without resizing it.
+        public void UnregisterLightVolume(LightVolumeInstance lightVolume) {
+            int count = LightVolumeInstances.Length;
+            for (int i = 0; i < count; i++) {
+                if (LightVolumeInstances[i] == lightVolume) {
+                    LightVolumeInstances[i] = null;
+                }
+            }
+            lightVolume.IsInitialized = false;
+        }
+
         public void InitializePointLightVolume(PointLightVolumeInstance pointLightVolume) {
             int count = PointLightVolumeInstances.Length;
-            // If there's an empty element in the array, use it!
+            int emptyIndex = -1;
+            // If this light is already registered, keep the existing slot. Otherwise remember the first free slot.
             for (int i = 0; i < count; i++) {
-                if (PointLightVolumeInstances[i] == null) {
-                    PointLightVolumeInstances[i] = pointLightVolume;
+                if (PointLightVolumeInstances[i] == pointLightVolume) {
                     pointLightVolume.LightVolumeManager = this;
                     pointLightVolume.IsInitialized = true;
                     return;
                 }
+                if (emptyIndex < 0 && PointLightVolumeInstances[i] == null) {
+                    emptyIndex = i;
+                }
+            }
+            if (emptyIndex >= 0) {
+                PointLightVolumeInstances[emptyIndex] = pointLightVolume;
+                pointLightVolume.LightVolumeManager = this;
+                pointLightVolume.IsInitialized = true;
+                return;
             }
             // No empty element, then increase the array size
             PointLightVolumeInstance[] targetArray = new PointLightVolumeInstance[count + 1];
@@ -281,6 +317,60 @@ namespace VRCLightVolumes {
             pointLightVolume.IsInitialized = true;
             pointLightVolume.LightVolumeManager = this;
             PointLightVolumeInstances = targetArray;
+        }
+
+        // Removes Point Light Volume references from the point light volumes array without resizing it.
+        public void UnregisterPointLightVolume(PointLightVolumeInstance pointLightVolume) {
+            int count = PointLightVolumeInstances.Length;
+            for (int i = 0; i < count; i++) {
+                if (PointLightVolumeInstances[i] == pointLightVolume) {
+                    PointLightVolumeInstances[i] = null;
+                }
+            }
+            pointLightVolume.IsInitialized = false;
+        }
+
+        // Removes stale inactive and duplicate references left in serialized arrays.
+        private void SanitizeRegistries() {
+            int lightVolumeCount = LightVolumeInstances.Length;
+            for (int i = 0; i < lightVolumeCount; i++) {
+                LightVolumeInstance instance = LightVolumeInstances[i];
+                if (instance == null) continue;
+                instance.LightVolumeManager = this;
+                if (!instance.gameObject.activeInHierarchy) {
+                    LightVolumeInstances[i] = null;
+                    instance.IsInitialized = false;
+                    continue;
+                }
+                instance.IsInitialized = true;
+                for (int j = 0; j < i; j++) {
+                    if (LightVolumeInstances[j] == instance) {
+                        LightVolumeInstances[i] = null;
+                        break;
+                    }
+                }
+            }
+
+            int pointLightCount = PointLightVolumeInstances.Length;
+            for (int i = 0; i < pointLightCount; i++) {
+                PointLightVolumeInstance instance = PointLightVolumeInstances[i];
+                if (instance == null) continue;
+                instance.LightVolumeManager = this;
+                if (!instance.gameObject.activeInHierarchy) {
+                    PointLightVolumeInstances[i] = null;
+                    instance.IsInitialized = false;
+                    continue;
+                }
+                instance.IsInitialized = true;
+                for (int j = 0; j < i; j++) {
+                    if (PointLightVolumeInstances[j] == instance) {
+                        PointLightVolumeInstances[i] = null;
+                        break;
+                    }
+                }
+            }
+
+            _isRegistrySanitized = true;
         }
 
         // Requests to update volumes next frame
@@ -331,14 +421,24 @@ namespace VRCLightVolumes {
                 IsRangeDirty = true;
             }
 
+            if (!_isRegistrySanitized) {
+                SanitizeRegistries();
+            }
+
             // Searching for enabled volumes. Counting Additive volumes.
             _enabledCount = 0;
             _additiveCount = 0;
             _occlusionCount = 0;
-            for (int i = 0; i < LightVolumeInstances.Length && _enabledCount < 32; i++) {
+            for (int i = 0; i < LightVolumeInstances.Length && _enabledCount < MaxLightVolumeCount; i++) {
                 LightVolumeInstance instance = LightVolumeInstances[i];
                 if (instance == null) continue;
-                if (instance.gameObject.activeInHierarchy && instance.Intensity != 0 && instance.Color != Color.black && !instance.IsIterartedThrough) {
+                if (!instance.gameObject.activeInHierarchy) {
+                    instance.LightVolumeManager = this;
+                    instance.IsInitialized = false;
+                    LightVolumeInstances[i] = null;
+                    continue;
+                }
+                if (instance.Intensity != 0 && instance.Color != Color.black) {
 #if UDONSHARP
     #if COMPILER_UDONSHARP
                     if (instance.IsDynamic) instance.UpdateTransform();
@@ -356,25 +456,7 @@ namespace VRCLightVolumes {
                     if (instance.BakeOcclusion) _occlusionCount++;
                     _enabledIDs[_enabledCount] = i;
                     _enabledCount++;
-                    instance.IsIterartedThrough = true;
-                } else {
-                    instance.IsIterartedThrough = false;
                 }
-            }
-
-            // Initializing required arrays
-            if (_enabledCount != _lastEnabledCount) {
-                _invLocalEdgeSmooth = new Vector4[_enabledCount];
-                _relativeRotationQuaternion = new Vector4[_enabledCount];
-                _boundsUvwScale = new Vector4[_enabledCount * 3];
-                _boundsOcclusionUvw = new Vector4[_enabledCount];
-                _colors = new Vector4[_enabledCount];
-
-                // Legacy data arrays
-                _invWorldMatrix = new Matrix4x4[_enabledCount];
-                _relativeRotation = new Vector4[_enabledCount * 2];
-                _boundsUvw = new Vector4[_enabledCount * 6];
-                _lastEnabledCount = _enabledCount;
             }
 
             // Filling arrays with enabled volumes
@@ -386,9 +468,6 @@ namespace VRCLightVolumes {
                 int i6 = i * 6;
 
                 LightVolumeInstance instance = LightVolumeInstances[enabledId];
-
-                // Reset iterated flag
-                instance.IsIterartedThrough = false;
 
                 // Setting volume transform
                 _invWorldMatrix[i] = instance.InvWorldMatrix;
@@ -423,13 +502,19 @@ namespace VRCLightVolumes {
 
             // Searching for enabled point light volumes
             _pointLightCount = 0;
-            for (int i = 0; i < PointLightVolumeInstances.Length && _pointLightCount < 128; i++) {
+            for (int i = 0; i < PointLightVolumeInstances.Length && _pointLightCount < MaxPointLightCount; i++) {
                 PointLightVolumeInstance instance = PointLightVolumeInstances[i];
                 if (instance == null) continue;
+                if (!instance.gameObject.activeInHierarchy) {
+                    instance.LightVolumeManager = this;
+                    instance.IsInitialized = false;
+                    PointLightVolumeInstances[i] = null;
+                    continue;
+                }
                 if (IsRangeDirty) { // If Brightness cutoff changed, force recalculate every light's range
                     instance.UpdateRange();
                 }
-                if (instance.gameObject.activeInHierarchy && instance.Intensity != 0 && instance.Color != Color.black && !instance.IsIterartedThrough) {
+                if (instance.Intensity != 0 && instance.Color != Color.black) {
 #if UDONSHARP
     #if COMPILER_UDONSHARP
                     if (instance.IsDynamic) instance.UpdateTransform();
@@ -445,37 +530,20 @@ namespace VRCLightVolumes {
 #endif
                     _enabledPointIDs[_pointLightCount] = i;
                     _pointLightCount++;
-                    instance.IsIterartedThrough = true;
-                } else {
-                    instance.IsIterartedThrough = false;
                 }
             }
 
-            IsRangeDirty = false; // reset range dirtyness
-
-            // Initializing required arrays
-            if (_pointLightCount != _lastPointLightCount) {
-                _pointLightPosition = new Vector4[_pointLightCount];
-                _pointLightColor = new Vector4[_pointLightCount];
-                _pointLightDirection = new Vector4[_pointLightCount];
-                _pointLightCustomId = new Vector4[_pointLightCount];
-                _pointLightDepthShadowData = new Vector4[_pointLightCount];
-                _pointLightDepthShadowReprojectionData = new Vector4[_pointLightCount];
-                _lastPointLightCount = _pointLightCount;
-            }
+            IsRangeDirty = false; // reset range dirtiness
 
             // Filling arrays with enabled point light volumes
             _activeDepthShadowCount = 0;
             for (int i = 0; i < _pointLightCount; i++) {
                 PointLightVolumeInstance instance = PointLightVolumeInstances[_enabledPointIDs[i]];
 
-                // Recalculate squared range of the light light if dirty
+                // Recalculate squared range of the light if dirty
                 if (IsRangeDirty || instance.IsRangeDirty) {
                     instance.UpdateRange();
                 }
-
-                // Reset iterated flag
-                instance.IsIterartedThrough = false;
 
                 Vector4 pos = instance.PositionData;
                 if (!instance.IsAreaLight()) {

@@ -49,7 +49,7 @@ namespace VRCLightVolumes {
         public Vector3 DepthShadowBakePosition = Vector3.zero;
         [Tooltip("World-space rotation where the experimental depth shadow cubemap was baked.")]
         public Quaternion DepthShadowBakeRotation = Quaternion.identity;
-        [Tooltip("True if this Point Light Volume added to the Point Light Volumes array in LightVolumeManager. Should be always true for the Point Light Volumes placed in editor. Helps to initialize Point Light Volumes spawned in runtime.")]
+        [Tooltip("True if this Point Light Volume is registered in the Light Volume Manager array. Disabled objects can be unregistered and will register again on enable.")]
         public bool IsInitialized = false;
         [Tooltip("Squared range after which light will be culled. Should be recalculated by executing UpdateRange() method.")]
         public float SquaredRange = 1;
@@ -58,8 +58,6 @@ namespace VRCLightVolumes {
         [Tooltip("Reference to the Light Volume Manager. Needed for runtime initialization.")]
         public LightVolumeManager LightVolumeManager;
 
-        
-        [HideInInspector] public bool IsIterartedThrough = false; // Sets to true by the manager to check if we already iterated through this light. Prevents adding the same lights to the array muntiple times.
         [HideInInspector] public bool IsRangeDirty = false; // Sets to true to recalculate the range automatically by the manager
         private Vector3 _prevPosition = Vector3.zero;
         private Quaternion _prevRotation = Quaternion.identity;
@@ -104,10 +102,16 @@ namespace VRCLightVolumes {
         }
 
         private void OnEnable() {
+            if (LightVolumeManager != null) {
+                LightVolumeManager.InitializePointLightVolume(this);
+            }
             RquestUpdateVolumes();
         }
 
         private void OnDisable() {
+            if (LightVolumeManager != null) {
+                LightVolumeManager.UnregisterPointLightVolume(this);
+            }
             RquestUpdateVolumes();
         }
 
