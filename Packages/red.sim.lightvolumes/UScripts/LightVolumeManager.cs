@@ -29,8 +29,6 @@ namespace VRCLightVolumes {
         public Texture LightVolumeAtlas;
         [Tooltip("Combined Texture3D containing all baked Light Volume data. This field is not used at runtime, see LightVolumeAtlas instead. It specifies the base for the post process chain, if given.")]
         public Texture3D LightVolumeAtlasBase;
-        [Tooltip("Custom Render Textures that will be applied top to bottom to the Light Volume Atlas at runtime. External scripts can register themselves here using `RegisterPostProcessorCRT`. You probably don't want to mess with this field manually.")]
-        public CustomRenderTexture[] AtlasPostProcessors;
         [Tooltip("When enabled, areas outside Light Volumes fall back to light probes. Otherwise, the Light Volume with the smallest weight is used as fallback. It also improves performance.")]
         public bool LightProbesBlending = true;
         [Tooltip("Disables smooth blending with areas outside Light Volumes. Use it if your entire scene's play area is covered by Light Volumes. It also improves performance.")]
@@ -39,6 +37,8 @@ namespace VRCLightVolumes {
         public bool AutoUpdateVolumes = false;
         [Tooltip("Limits the maximum number of additive volumes that can affect a single pixel. If you have many dynamic additive volumes that may overlap, it's good practice to limit overdraw to maintain performance.")]
         public int AdditiveMaxOverdraw = 4;
+        [Tooltip("Disables min/max brightness limits for modern avatar shaders such as lilToon or Poiyomi. Check this only if you're sure your scene lighting is properly configured.")]
+        public bool ForceSceneLighting = false;
         [Tooltip("The minimum brightness at a point due to lighting from a Point Light Volume, before the light is culled. Larger values will result in better performance, but light attenuation will be less physically correct.")]
         public float LightsBrightnessCutoff = 0.35f;
         [Tooltip("All Light Volume instances sorted in decreasing order by weight. You can enable or disable volumes game objects at runtime. Manually disabling unnecessary volumes improves performance.")]
@@ -139,8 +139,10 @@ namespace VRCLightVolumes {
         private int _legacyLightVolumeOcclusionCountID;
         private int lightVolumeRotationID;
         private int lightVolumeUvwID;
-
-        // Initializing global shader arrays if needed
+        // Other
+        private int forceSceneLightingID;
+        
+        // Initializing gloabal shader arrays if needed 
         private void TryInitialize() {
 
 #if !UNITY_EDITOR
@@ -179,6 +181,8 @@ namespace VRCLightVolumes {
             _legacyLightVolumeOcclusionCountID = VRCShader.PropertyToID("_UdonLightVolumeOcclusionCount");
             lightVolumeRotationID = VRCShader.PropertyToID("_UdonLightVolumeRotation");
             lightVolumeUvwID = VRCShader.PropertyToID("_UdonLightVolumeUvw");
+            // Other
+            forceSceneLightingID = VRCShader.PropertyToID("_UdonForceSceneLighting");
 
 #if UNITY_EDITOR
             if (_isInitialized) return;
@@ -435,6 +439,9 @@ namespace VRCLightVolumes {
         public void UpdateVolumes() {
 
             TryInitialize();
+            
+            // Defines if Force Scene Lighting Feature is enabled in scene. 0 if disabled.
+            VRCShader.SetGlobalInteger(forceSceneLightingID, ForceSceneLighting ? 1 : 0);
 
             if (!enabled || !gameObject.activeInHierarchy) {
                 SetDisabledShaderState();

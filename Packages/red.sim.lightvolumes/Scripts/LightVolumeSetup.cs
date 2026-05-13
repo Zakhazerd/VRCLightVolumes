@@ -13,6 +13,7 @@ using System.IO;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
 using UnityEngine.Diagnostics;
+using System.Linq;
 #endif
 
 namespace VRCLightVolumes {
@@ -69,11 +70,24 @@ namespace VRCLightVolumes {
         public bool AutoUpdateVolumes = false;
         [Tooltip("Limits the maximum number of additive volumes and point light volumes that can affect a single pixel. If you have many dynamic additive or point light volumes that may overlap, it's good practice to limit overdraw to maintain performance.")]
         [Min(1)]public int AdditiveMaxOverdraw = 4;
+        [Tooltip("Disables min/max brightness limits for modern avatar shaders such as lilToon or Poiyomi. Check this only if you're sure your scene lighting is properly configured.")]
+        public bool ForceSceneLighting = false;
         [Header("Debug")]
         [Tooltip("Removes all Light Volume scripts in play mode, except Udon components. Useful for testing in a clean setup, just like in VRChat. For example, Auto Update Volumes and Dynamic Light Volumes will work just like in VRChat.")]
         public bool DestroyInPlayMode = false;
 
         [SerializeField] public List<LightVolumeData> LightVolumeDataList = new List<LightVolumeData>();
+
+        [Serializable]
+        public struct PostProcessor {
+            public RenderTexture RT;
+            public Material Mat;
+            public string TextureName;
+            public Action Update;
+        }
+
+        [Tooltip("Render Textures that will be applied top to bottom to the Light Volume Atlas at runtime. External scripts can register themselves here using `RegisterPostProcessorCRT`. You probably don't want to mess with this field manually.")]
+        public PostProcessor[] AtlasPostProcessors;
 
         public bool IsBakeryMode => BakingMode == Baking.Bakery; // Just a shortcut
         public LightVolumeManager LightVolumeManager;
@@ -523,6 +537,12 @@ namespace VRCLightVolumes {
                 _generateAtlasCoroutine = null;
             }
 
+            // @pimaker: If there are post processors, the 3D texture will run through a Custom Render Texture every frame.
+            // Unity dispatches CRT renders on 3D textures in slices by depth, so we want to reduce the z axis of the atlas
+            // as much as possible to reduce per-frame drawcalls - even at the cost of slightly higher VRAM efficiency.
+            var packingStrategy = AtlasPostProcessors != null && AtlasPostProcessors.Length > 0 && AtlasPostProcessors.Any(pp => pp.RT is CustomRenderTexture)
+                ? TexturePackingStrategy.MinimumDepth : TexturePackingStrategy.MinimumVRAM;
+
             _generateAtlasCoroutine = EditorCoroutineUtility.StartCoroutine(Texture3DAtlasGenerator.CreateAtlas(LightVolumes.ToArray(), (Atlas3D atlas) => {
 
                 if (atlas.Texture == null || DontSync) return; // Return if atlas packing failed
@@ -582,7 +602,7 @@ namespace VRCLightVolumes {
 
                 _generateAtlasCoroutine = null;
 
-            }, (int)DownscaleVolumes), this);
+            }, (int)DownscaleVolumes, packingStrategy), this);
 
         }
 
@@ -645,6 +665,7 @@ namespace VRCLightVolumes {
                 _lightVolumeManagerBehaviour.SetProgramVariable("AdditiveMaxOverdraw", AdditiveMaxOverdraw);
                 _lightVolumeManagerBehaviour.SetProgramVariable("AreaLightBrightnessCutoff", LightsBrightnessCutoff);
                 _lightVolumeManagerBehaviour.SetProgramVariable("ShadowResolution", (float)ShadowResolution);
+                _lightVolumeManagerBehaviour.SetProgramVariable("ForceSceneLighting", ForceSceneLighting);
 
                 if (LightVolumes.Count != 0) {
                     var instances = LightVolumeDataSorter.GetData(LightVolumeDataSorter.SortData(LightVolumeDataList));
@@ -673,6 +694,7 @@ namespace VRCLightVolumes {
                 LightVolumeManager.AdditiveMaxOverdraw = AdditiveMaxOverdraw;
                 LightVolumeManager.LightsBrightnessCutoff = LightsBrightnessCutoff;
                 LightVolumeManager.ShadowResolution = (float)ShadowResolution;
+                LightVolumeManager.ForceSceneLighting = ForceSceneLighting;
 
                 if (LightVolumes.Count != 0) {
                     LightVolumeManager.LightVolumeInstances = LightVolumeDataSorter.GetData(LightVolumeDataSorter.SortData(LightVolumeDataList));
@@ -737,32 +759,46 @@ namespace VRCLightVolumes {
             return list.ToArray();
         }
 
+#if UNITY_EDITOR
         public void RegisterPostProcessorCRT(CustomRenderTexture crt) {
-            if (crt == null || Array.IndexOf(LightVolumeManager.AtlasPostProcessors, crt) != -1) return;
-            LightVolumeManager.AtlasPostProcessors ??= new CustomRenderTexture[0];
-            Array.Resize(ref LightVolumeManager.AtlasPostProcessors, LightVolumeManager.AtlasPostProcessors.Length + 1);
-            LightVolumeManager.AtlasPostProcessors[^1] = crt;
+            if (crt == null) return;
+            AtlasPostProcessors ??= new PostProcessor[0];
+            if (AtlasPostProcessors.Any(pp => pp.RT == crt)) return;
+            Array.Resize(ref AtlasPostProcessors, AtlasPostProcessors.Length + 1);
+            AtlasPostProcessors[^1] = new PostProcessor { RT = crt, Mat = crt.material, TextureName = "_MainTex", Update = crt.Update };
             Debug.Log($"[LightVolumeSetup] Registered post processor CRT: {crt.name}");
             UpdatePostProcessors();
         }
 
-        public void UnregisterPostProcessorCRT(CustomRenderTexture crt) {
-            if (crt == null) return;
-            var index = Array.IndexOf(LightVolumeManager.AtlasPostProcessors, crt);
+        public void UnregisterPostProcessorCRT(CustomRenderTexture crt) => UnregisterPostProcessor(crt); // API backwards compat
+        public void UnregisterPostProcessor(RenderTexture crt) {
+            if (crt == null || AtlasPostProcessors == null) return;
+            var index = Array.FindIndex(AtlasPostProcessors, pp => pp.RT == crt);
             if (index < 0) return;
-            var newArray = new CustomRenderTexture[LightVolumeManager.AtlasPostProcessors.Length - 1];
-            for (int i = 0, j = 0; i < LightVolumeManager.AtlasPostProcessors.Length; i++) {
+            var newArray = new PostProcessor[AtlasPostProcessors.Length - 1];
+            for (int i = 0, j = 0; i < AtlasPostProcessors.Length; i++) {
                 if (i != index) {
-                    newArray[j++] = LightVolumeManager.AtlasPostProcessors[i];
+                    newArray[j] = AtlasPostProcessors[i];
+                    j++;
                 }
             }
-            LightVolumeManager.AtlasPostProcessors = newArray;
+            AtlasPostProcessors = newArray;
             Debug.Log($"[LightVolumeSetup] Unregistered post processor CRT: {crt.name}");
             UpdatePostProcessors();
         }
 
+        public void RegisterPostProcessor(PostProcessor pp) {
+            if (pp.RT == null || pp.Mat == null) return;
+            AtlasPostProcessors ??= new PostProcessor[0];
+            if (AtlasPostProcessors.Any(existing => existing.RT == pp.RT)) return;
+            Array.Resize(ref AtlasPostProcessors, AtlasPostProcessors.Length + 1);
+            AtlasPostProcessors[^1] = pp;
+            Debug.Log($"[LightVolumeSetup] Registered post processor: {pp.RT.name}");
+            UpdatePostProcessors();
+        }
+
         private void UpdatePostProcessors() {
-            if (LightVolumeManager.AtlasPostProcessors == null || LightVolumeManager.AtlasPostProcessors.Length == 0) {
+            if (AtlasPostProcessors == null || AtlasPostProcessors.Length == 0) {
                 // no post processors, just use base atlas
                 LightVolumeManager.LightVolumeAtlas = LightVolumeManager.LightVolumeAtlasBase;
                 return;
@@ -770,30 +806,36 @@ namespace VRCLightVolumes {
 
             Texture3D baseAtlas = LightVolumeManager.LightVolumeAtlasBase;
             Texture prevAtlas = baseAtlas;
-            foreach (var crt in LightVolumeManager.AtlasPostProcessors) {
-                if (crt == null) continue;
+            foreach (PostProcessor pp in AtlasPostProcessors) {
+                RenderTexture rt = pp.RT;
+                Material mat = pp.Mat;
+                if (rt == null || mat == null) continue;
 
                 // enforce some base settings to ensure no quality loss between post processors
-                crt.Release();
-                crt.dimension = UnityEngine.Rendering.TextureDimension.Tex3D;
-                crt.graphicsFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_SFloat;
-                crt.updateMode = CustomRenderTextureUpdateMode.Realtime;
+                rt.Release();
+                rt.dimension = UnityEngine.Rendering.TextureDimension.Tex3D;
+                rt.graphicsFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_SFloat;
+                if (rt is CustomRenderTexture crt)
+                    crt.updateMode = CustomRenderTextureUpdateMode.Realtime;
+
                 if (baseAtlas != null) {
-                    crt.width = baseAtlas.width;
-                    crt.height = baseAtlas.height;
-                    crt.volumeDepth = baseAtlas.depth;
+                    rt.width = baseAtlas.width;
+                    rt.height = baseAtlas.height;
+                    rt.volumeDepth = baseAtlas.depth;
                 }
 
                 // build processing chain
-                crt.material.mainTexture = prevAtlas;
-                prevAtlas = crt;
+                mat.SetTexture(pp.TextureName, prevAtlas);
+                prevAtlas = rt;
 
                 // store last CRT as active
-                LightVolumeManager.LightVolumeAtlas = crt;
+                LightVolumeManager.LightVolumeAtlas = rt;
 
-                crt.Update();
+                // force an update right away
+                pp.Update?.Invoke();
             }
         }
+#endif
 
         // Returns the selected shadow map texture format.
         public TextureFormat GetShadowTextureFormat() {
