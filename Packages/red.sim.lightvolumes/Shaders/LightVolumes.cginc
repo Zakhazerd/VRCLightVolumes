@@ -1,6 +1,6 @@
 #ifndef VRC_LIGHT_VOLUMES_INCLUDED
 #define VRC_LIGHT_VOLUMES_INCLUDED
-#define VRCLV_VERSION 2
+#define VRCLV_VERSION 3
 #define VRCLV_MAX_VOLUMES_COUNT 32
 #define VRCLV_MAX_LIGHTS_COUNT 128
 
@@ -51,11 +51,11 @@ uniform float _UdonPointLightVolumeCount;
 // Cubemaps count in the custom textures array
 uniform float _UdonPointLightVolumeCubeCount;
 
-// Depth shadow cubemaps count in the experimental depth shadow texture array
-uniform float _UdonPointLightVolumeDepthShadowCount;
+// Shadow cubemaps count in the shadow texture array
+uniform float _UdonPointLightVolumeShadowCount;
 
-// Depth shadow cubemap face resolution in pixels
-uniform float _UdonPointLightVolumeDepthShadowResolution;
+// Shadow cubemap face resolution in pixels
+uniform float _UdonPointLightVolumeShadowResolution;
 
 // For point light: XYZ = Position, W = Inverse squared range
 // For spot light: XYZ = Position, W = Inverse squared range, negated
@@ -78,18 +78,19 @@ uniform float4 _UdonPointLightVolumeDirection[VRCLV_MAX_LIGHTS_COUNT];
 //   If uses custom texture: X stores texture ID with negative sign
 // Y = Reserved data slot kept for layout compatibility.
 // Z = Squared Culling Range. Just a precalculated culling range to not recalculate it in shader.
-// W = Depth shadow cubemap ID. 0 disables shadow, positive encodes id + 1, negative encodes follow-light mode as -id - 1.
-uniform float4 _UdonPointLightVolumeCustomID[VRCLV_MAX_LIGHTS_COUNT];
+uniform float3 _UdonPointLightVolumeCustomID[VRCLV_MAX_LIGHTS_COUNT];
 
-// X = Depth bias, Y = normal bias, Z = bias smoothing radius, W = soft shadows PCF enabled.
-uniform float4 _UdonPointLightVolumeDepthShadowData[VRCLV_MAX_LIGHTS_COUNT];
+// X = Shadow cubemap ID. 0 disables shadow, positive encodes World Space Shadows as id + 1, negative encodes Local Space Shadows as -id - 1.
+// Y = Signed depth bias. Negative values enable soft shadows PCF.
+// Z = Bias smoothing radius.
+uniform float3 _UdonPointLightVolumeShadowData[VRCLV_MAX_LIGHTS_COUNT];
 
-// If depth shadow follow light is disabled:
-//   XYZ = Depth shadow cubemap bake position in world space.
-//   W = Valid non-follow depth shadow data. Reprojection is always enabled.
-// If depth shadow follow light is enabled:
+// For World Space Shadows:
+//   XYZ = shadow cubemap bake position in world space.
+//   W = valid non-follow shadow data. Reprojection is always enabled.
+// For Local Space Shadows:
 //   XYZW = Rotation from current light space to baked cubemap space.
-uniform float4 _UdonPointLightVolumeDepthShadowReprojectionData[VRCLV_MAX_LIGHTS_COUNT];
+uniform float4 _UdonPointLightVolumeShadowReprojectionData[VRCLV_MAX_LIGHTS_COUNT];
 
 // If we are far enough from a light that the irradiance
 // is guaranteed lower than the threshold defined by this value,
@@ -107,18 +108,18 @@ uniform Texture3D _UdonLightVolume;
 uniform SamplerState sampler_UdonLightVolume;
 // First elements must be cubemap faces (6 face textures per cubemap). Then goes other textures
 uniform Texture2DArray _UdonPointLightVolumeTexture;
-// First elements are baked depth cubemap faces, 6 face textures per cubemap.
-uniform Texture2DArray _UdonPointLightVolumeDepthShadowTexture;
-uniform SamplerState sampler_UdonPointLightVolumeDepthShadowTexture;
+// First elements are baked shadow cubemap faces, 6 face textures per cubemap.
+uniform Texture2DArray _UdonPointLightVolumeShadowTexture;
+uniform SamplerState sampler_UdonPointLightVolumeShadowTexture;
 // Samples a texture using mip 0, and reusing a single sampler
 #define LV_SAMPLE(tex, uvw) tex.SampleLevel(sampler_UdonLightVolume, uvw, 0)
-#define LV_SAMPLE_DEPTH_SHADOW(uvw) _UdonPointLightVolumeDepthShadowTexture.SampleLevel(sampler_UdonPointLightVolumeDepthShadowTexture, uvw, 0)
+#define LV_SAMPLE_SHADOW(uvw) _UdonPointLightVolumeShadowTexture.SampleLevel(sampler_UdonPointLightVolumeShadowTexture, uvw, 0)
 
 #else
 
 // Dummy macro definition to satisfy MojoShader (surface shaders).
 #define LV_SAMPLE(tex, uvw) float4(0,0,0,0)
-#define LV_SAMPLE_DEPTH_SHADOW(uvw) float4(0,0,0,0)
+#define LV_SAMPLE_SHADOW(uvw) float4(0,0,0,0)
 
 #endif
 
@@ -241,14 +242,14 @@ float3 LV_CubemapDirection(uint face, float2 uv) {
     return dir * rsqrt(dot(dir, dir));
 }
 
-// Samples a depth cubemap array face using face UV.
-float4 LV_SampleDepthCubemapArrayFace(uint id, uint face, float2 uv) {
+// Samples a shadow map array face using face UV.
+float4 LV_SampleShadowMapArrayFace(uint id, uint face, float2 uv) {
     float3 uvid = float3(uv, id * 6 + face);
-    return LV_SAMPLE_DEPTH_SHADOW(uvid);
+    return LV_SAMPLE_SHADOW(uvid);
 }
 
 // Compares a depth value with a receiver distance.
-void LV_PointLightDepthShadowCompareDepth(float shadowDistance, float distanceToLight, float bias, float biasSmoothness, out float shadow) {
+void LV_PointLightShadowCompareDepth(float shadowDistance, float distanceToLight, float bias, float biasSmoothness, out float shadow) {
     float threshold = shadowDistance + bias;
     shadow = 0.0f;
     [branch] if (biasSmoothness <= 0.0001f) {
@@ -262,7 +263,7 @@ void LV_PointLightDepthShadowCompareDepth(float shadowDistance, float distanceTo
 }
 
 // Compares squared reprojected depth with a receiver distance without resolving sqrt per PCF tap.
-void LV_PointLightDepthShadowCompareDepthSq(float shadowDistanceSq, float distanceToLight, float bias, float biasSmoothness, out float shadow) {
+void LV_PointLightShadowCompareDepthSq(float shadowDistanceSq, float distanceToLight, float bias, float biasSmoothness, out float shadow) {
     float receiverDistance = max(distanceToLight - bias, 0.0f);
     float receiverDistanceSq = receiverDistance * receiverDistance;
     shadow = 0.0f;
@@ -280,36 +281,36 @@ void LV_PointLightDepthShadowCompareDepthSq(float shadowDistanceSq, float distan
     }
 }
 
-// Compares a depth cubemap face sample with a receiver distance.
-float LV_PointLightDepthShadowCompare(uint shadowId, uint face, float2 uv, float distanceToLight, float bias, float biasSmoothness) {
+// Compares a shadow map face sample with a receiver distance.
+float LV_PointLightShadowCompare(uint shadowId, uint face, float2 uv, float distanceToLight, float bias, float biasSmoothness) {
     float shadow = 0.0f;
-    LV_PointLightDepthShadowCompareDepth(LV_SampleDepthCubemapArrayFace(shadowId, face, uv).r, distanceToLight, bias, biasSmoothness, shadow);
+    LV_PointLightShadowCompareDepth(LV_SampleShadowMapArrayFace(shadowId, face, uv).r, distanceToLight, bias, biasSmoothness, shadow);
     return shadow;
 }
 
 // Calculates reprojected baked depth as squared distance from current light position.
-float LV_PointLightDepthShadowReprojectedDistanceSq(float shadowDistanceFromBake, float bakeToLightSq, float bakeToLightDotDir2) {
+float LV_PointLightShadowReprojectedDistanceSq(float shadowDistanceFromBake, float bakeToLightSq, float bakeToLightDotDir2) {
     return max(shadowDistanceFromBake * (shadowDistanceFromBake + bakeToLightDotDir2) + bakeToLightSq, 0.0f);
 }
 
-// Compares a reprojected depth cubemap face sample with a receiver distance and known sample direction.
-float LV_PointLightDepthShadowCompareReprojectedDir(uint shadowId, uint face, float2 uv, float3 sampleDir, float3 lightPos, float3 bakePos, float distanceToLight, float bias, float biasSmoothness) {
-    float shadowDistanceFromBake = LV_SampleDepthCubemapArrayFace(shadowId, face, uv).r;
+// Compares a reprojected shadow map face sample with a receiver distance and known sample direction.
+float LV_PointLightShadowCompareReprojectedDir(uint shadowId, uint face, float2 uv, float3 sampleDir, float3 lightPos, float3 bakePos, float distanceToLight, float bias, float biasSmoothness) {
+    float shadowDistanceFromBake = LV_SampleShadowMapArrayFace(shadowId, face, uv).r;
     float3 bakeToLight = lightPos - bakePos;
-    float shadowDistanceSq = LV_PointLightDepthShadowReprojectedDistanceSq(shadowDistanceFromBake, dot(bakeToLight, bakeToLight), dot(bakeToLight, sampleDir) * 2.0f);
+    float shadowDistanceSq = LV_PointLightShadowReprojectedDistanceSq(shadowDistanceFromBake, dot(bakeToLight, bakeToLight), dot(bakeToLight, sampleDir) * 2.0f);
     float shadow = 0.0f;
-    LV_PointLightDepthShadowCompareDepthSq(shadowDistanceSq, distanceToLight, bias, biasSmoothness, shadow);
+    LV_PointLightShadowCompareDepthSq(shadowDistanceSq, distanceToLight, bias, biasSmoothness, shadow);
     return shadow;
 }
 
-// Compares a reprojected depth cubemap face sample with a receiver distance.
-float LV_PointLightDepthShadowCompareReprojected(uint shadowId, uint face, float2 uv, float3 lightPos, float3 bakePos, float distanceToLight, float bias, float biasSmoothness) {
-    return LV_PointLightDepthShadowCompareReprojectedDir(shadowId, face, uv, LV_CubemapDirection(face, uv), lightPos, bakePos, distanceToLight, bias, biasSmoothness);
+// Compares a reprojected shadow map face sample with a receiver distance.
+float LV_PointLightShadowCompareReprojected(uint shadowId, uint face, float2 uv, float3 lightPos, float3 bakePos, float distanceToLight, float bias, float biasSmoothness) {
+    return LV_PointLightShadowCompareReprojectedDir(shadowId, face, uv, LV_CubemapDirection(face, uv), lightPos, bakePos, distanceToLight, bias, biasSmoothness);
 }
 
 // Resolves four depth samples and bilinear factors for the software PCF path.
-void LV_PointLightDepthShadowBilinearSamples(uint shadowId, uint face, float2 uv, out float4 shadowDepths, out float2 texelFrac) {
-    float resolution = max(_UdonPointLightVolumeDepthShadowResolution, 1.0f);
+void LV_PointLightShadowBilinearSamples(uint shadowId, uint face, float2 uv, out float4 shadowDepths, out float2 texelFrac) {
+    float resolution = max(_UdonPointLightVolumeShadowResolution, 1.0f);
     float invResolution = rcp(resolution);
     float2 texelPos = uv * resolution - 0.5f;
     float2 texelBase = floor(texelPos);
@@ -322,18 +323,18 @@ void LV_PointLightDepthShadowBilinearSamples(uint shadowId, uint face, float2 uv
     float2 uv11 = (min(max(texelBase + float2(1.0f, 1.0f), 0.0f), texelMax) + 0.5f) * invResolution;
 
     shadowDepths = float4(
-        LV_SampleDepthCubemapArrayFace(shadowId, face, uv00).r,
-        LV_SampleDepthCubemapArrayFace(shadowId, face, uv10).r,
-        LV_SampleDepthCubemapArrayFace(shadowId, face, uv01).r,
-        LV_SampleDepthCubemapArrayFace(shadowId, face, uv11).r
+        LV_SampleShadowMapArrayFace(shadowId, face, uv00).r,
+        LV_SampleShadowMapArrayFace(shadowId, face, uv10).r,
+        LV_SampleShadowMapArrayFace(shadowId, face, uv01).r,
+        LV_SampleShadowMapArrayFace(shadowId, face, uv11).r
     );
 }
 
-float LV_PointLightDepthShadowBilinearBlend(float4 shadows, float2 texelFrac) {
+float LV_PointLightShadowBilinearBlend(float4 shadows, float2 texelFrac) {
     return lerp(lerp(shadows.x, shadows.y, texelFrac.x), lerp(shadows.z, shadows.w, texelFrac.x), texelFrac.y);
 }
 
-float4 LV_PointLightDepthShadowCompareDepths(float4 shadowDepths, float distanceToLight, float bias, float biasSmoothness) {
+float4 LV_PointLightShadowCompareDepths(float4 shadowDepths, float distanceToLight, float bias, float biasSmoothness) {
     float receiverDistance = distanceToLight - bias;
     [branch] if (biasSmoothness <= 0.0001f) {
         return step(float4(receiverDistance, receiverDistance, receiverDistance, receiverDistance), shadowDepths);
@@ -344,7 +345,7 @@ float4 LV_PointLightDepthShadowCompareDepths(float4 shadowDepths, float distance
     return smoothShadow * smoothShadow * (3.0f - 2.0f * smoothShadow);
 }
 
-float4 LV_PointLightDepthShadowCompareDepthsSq(float4 shadowDistanceSq, float distanceToLight, float bias, float biasSmoothness) {
+float4 LV_PointLightShadowCompareDepthsSq(float4 shadowDistanceSq, float distanceToLight, float bias, float biasSmoothness) {
     float receiverDistance = max(distanceToLight - bias, 0.0f);
     float receiverDistanceSq = receiverDistance * receiverDistance;
     [branch] if (biasSmoothness <= 0.0001f) {
@@ -361,76 +362,65 @@ float4 LV_PointLightDepthShadowCompareDepthsSq(float4 shadowDistanceSq, float di
 }
 
 // Bilinear PCF compare, close to how hardware shadow samplers soften hard shadow-map edges.
-float LV_PointLightDepthShadowCompareBilinear(uint shadowId, uint face, float2 uv, float distanceToLight, float bias, float biasSmoothness) {
+float LV_PointLightShadowCompareBilinear(uint shadowId, uint face, float2 uv, float distanceToLight, float bias, float biasSmoothness) {
     float4 shadowDepths = 0.0f;
     float2 texelFrac = 0.0f;
-    LV_PointLightDepthShadowBilinearSamples(shadowId, face, uv, shadowDepths, texelFrac);
-    return LV_PointLightDepthShadowBilinearBlend(LV_PointLightDepthShadowCompareDepths(shadowDepths, distanceToLight, bias, biasSmoothness), texelFrac);
+    LV_PointLightShadowBilinearSamples(shadowId, face, uv, shadowDepths, texelFrac);
+    return LV_PointLightShadowBilinearBlend(LV_PointLightShadowCompareDepths(shadowDepths, distanceToLight, bias, biasSmoothness), texelFrac);
 }
 
 // Bilinear PCF compare that reprojects baked depth samples to the current point light position.
-float LV_PointLightDepthShadowCompareBilinearReprojected(uint shadowId, uint face, float2 uv, float3 sampleDir, float3 lightPos, float3 bakePos, float distanceToLight, float bias, float biasSmoothness) {
+float LV_PointLightShadowCompareBilinearReprojected(uint shadowId, uint face, float2 uv, float3 sampleDir, float3 lightPos, float3 bakePos, float distanceToLight, float bias, float biasSmoothness) {
     float4 shadowDepths = 0.0f;
     float2 texelFrac = 0.0f;
-    LV_PointLightDepthShadowBilinearSamples(shadowId, face, uv, shadowDepths, texelFrac);
+    LV_PointLightShadowBilinearSamples(shadowId, face, uv, shadowDepths, texelFrac);
 
     float3 bakeToLight = lightPos - bakePos;
     float bakeToLightSq = dot(bakeToLight, bakeToLight);
     float bakeToLightDotDir2 = dot(bakeToLight, sampleDir) * 2.0f;
     float4 shadowDistanceSq = max(shadowDepths * (shadowDepths + bakeToLightDotDir2) + bakeToLightSq, 0.0f);
-    return LV_PointLightDepthShadowBilinearBlend(LV_PointLightDepthShadowCompareDepthsSq(shadowDistanceSq, distanceToLight, bias, biasSmoothness), texelFrac);
+    return LV_PointLightShadowBilinearBlend(LV_PointLightShadowCompareDepthsSq(shadowDistanceSq, distanceToLight, bias, biasSmoothness), texelFrac);
 }
 
-// Samples the experimental per-light depth shadow cubemap.
-void LV_PointLightDepthShadow(uint id, float depthShadowIdData, float3 lightPos, float3 worldPos, float3 worldNormal, float3 dirN, float distanceToLight, out float shadow) {
+// Samples the per-light shadow cubemap.
+void LV_PointLightShadow(uint id, float3 shadowData, float3 lightPos, float3 worldPos, float3 dirN, float distanceToLight, out float shadow) {
     shadow = 1.0f;
-    [branch] if (depthShadowIdData == 0.0f || _UdonPointLightVolumeDepthShadowCount <= 0.0f) return;
+    float shadowIdData = shadowData.x;
+    [branch] if (shadowIdData == 0.0f || _UdonPointLightVolumeShadowCount <= 0.0f) return;
 
-    bool depthShadowFollowLight = depthShadowIdData < 0.0f;
-    float shadowIndex = depthShadowFollowLight ? -depthShadowIdData - 1.0f : depthShadowIdData - 1.0f;
-    [branch] if (shadowIndex < 0.0f || shadowIndex >= _UdonPointLightVolumeDepthShadowCount) return;
+    bool localSpaceShadows = shadowIdData < 0.0f;
+    float shadowIndex = localSpaceShadows ? -shadowIdData - 1.0f : shadowIdData - 1.0f;
+    [branch] if (shadowIndex < 0.0f || shadowIndex >= _UdonPointLightVolumeShadowCount) return;
 
-    float4 shadowData = _UdonPointLightVolumeDepthShadowData[id];
     uint shadowId = (uint)shadowIndex;
-    float bias = max(shadowData.x, 0.0f);
-    float normalBias = max(shadowData.y, 0.0f);
+    float encodedBias = shadowData.y;
+    bool softShadows = encodedBias < 0.0f;
+    // Soft shadows add a tiny encoding offset so zero-bias soft shadows can stay representable.
+    float bias = softShadows ? max(-encodedBias - 0.000001f, 0.0f) : max(encodedBias, 0.0f);
     float biasSmoothness = max(shadowData.z, 0.0f);
-    bool softShadows = shadowData.w > 0.5f;
-    float3 shadowWorldPos = worldPos;
-    [branch] if (normalBias > 0.0f) {
-        float normalLenSq = dot(worldNormal, worldNormal);
-        [branch] if (normalLenSq > 0.0001f) {
-            shadowWorldPos += worldNormal * normalBias;
-            float3 shadowDir = lightPos - shadowWorldPos;
-            float shadowSqLen = max(dot(shadowDir, shadowDir), 0.000001f);
-            float shadowInvLen = rsqrt(shadowSqLen);
-            dirN = shadowDir * shadowInvLen;
-            distanceToLight = shadowSqLen * shadowInvLen;
-        }
-    }
 
-    float4 reprojectionData = _UdonPointLightVolumeDepthShadowReprojectionData[id];
-    [branch] if (depthShadowFollowLight) {
-        float3 depthShadowDir = LV_MultiplyVectorByQuaternion(dirN, reprojectionData);
+    float4 reprojectionData = _UdonPointLightVolumeShadowReprojectionData[id];
+    [branch] if (localSpaceShadows) {
+        float3 shadowDir = LV_MultiplyVectorByQuaternion(dirN, reprojectionData);
         uint followFace = 0;
         float2 followUv = 0.0f;
-        LV_CubemapFaceUv(depthShadowDir, followFace, followUv);
-        [branch] if (softShadows) shadow = LV_PointLightDepthShadowCompareBilinear(shadowId, followFace, followUv, distanceToLight, bias, biasSmoothness);
-        else shadow = LV_PointLightDepthShadowCompare(shadowId, followFace, followUv, distanceToLight, bias, biasSmoothness);
+        LV_CubemapFaceUv(shadowDir, followFace, followUv);
+        [branch] if (softShadows) shadow = LV_PointLightShadowCompareBilinear(shadowId, followFace, followUv, distanceToLight, bias, biasSmoothness);
+        else shadow = LV_PointLightShadowCompare(shadowId, followFace, followUv, distanceToLight, bias, biasSmoothness);
         return;
     }
 
     float3 bakeOffset = lightPos - reprojectionData.xyz;
     [branch] if (reprojectionData.w > 0.0f && dot(bakeOffset, bakeOffset) > 0.000001f) {
-        float3 bakeDir = reprojectionData.xyz - shadowWorldPos;
+        float3 bakeDir = reprojectionData.xyz - worldPos;
         float bakeSqLen = dot(bakeDir, bakeDir);
         [branch] if (bakeSqLen > 0.0001f) {
             uint reprojectionFace = 0;
             float2 reprojectionUv = 0.0f;
             float3 bakeDirN = bakeDir * rsqrt(bakeSqLen);
             LV_CubemapFaceUv(bakeDirN, reprojectionFace, reprojectionUv);
-            [branch] if (softShadows) shadow = LV_PointLightDepthShadowCompareBilinearReprojected(shadowId, reprojectionFace, reprojectionUv, bakeDirN, lightPos, reprojectionData.xyz, distanceToLight, bias, biasSmoothness);
-            else shadow = LV_PointLightDepthShadowCompareReprojectedDir(shadowId, reprojectionFace, reprojectionUv, bakeDirN, lightPos, reprojectionData.xyz, distanceToLight, bias, biasSmoothness);
+            [branch] if (softShadows) shadow = LV_PointLightShadowCompareBilinearReprojected(shadowId, reprojectionFace, reprojectionUv, bakeDirN, lightPos, reprojectionData.xyz, distanceToLight, bias, biasSmoothness);
+            else shadow = LV_PointLightShadowCompareReprojectedDir(shadowId, reprojectionFace, reprojectionUv, bakeDirN, lightPos, reprojectionData.xyz, distanceToLight, bias, biasSmoothness);
             return;
         }
     }
@@ -438,18 +428,20 @@ void LV_PointLightDepthShadow(uint id, float depthShadowIdData, float3 lightPos,
     uint face = 0;
     float2 uv = 0.0f;
     LV_CubemapFaceUv(dirN, face, uv);
-    [branch] if (softShadows) shadow = LV_PointLightDepthShadowCompareBilinear(shadowId, face, uv, distanceToLight, bias, biasSmoothness);
-    else shadow = LV_PointLightDepthShadowCompare(shadowId, face, uv, distanceToLight, bias, biasSmoothness);
+    [branch] if (softShadows) shadow = LV_PointLightShadowCompareBilinear(shadowId, face, uv, distanceToLight, bias, biasSmoothness);
+    else shadow = LV_PointLightShadowCompare(shadowId, face, uv, distanceToLight, bias, biasSmoothness);
 }
 
-// Applies per-light depth shadow after the overdraw slot has already been reserved.
-bool LV_PointLightApplyDepthShadow(uint id, float4 customIDData, float4 lightPositionData, float3 worldPos, float3 worldNormal, float3 dirN, float sqDistanceToLight, float invDistanceToLight, inout float lightOcclusion) {
-    [branch] if (customIDData.w == 0.0f || _UdonPointLightVolumeDepthShadowCount <= 0.0f) return lightOcclusion > 0.0f;
+// Returns per-light shadow attenuation after the overdraw slot has already been reserved.
+float LV_PointLightShadowAttenuation(uint id, float4 lightPositionData, float3 worldPos, float3 dirN, float sqDistanceToLight, float invDistanceToLight) {
+    [branch] if (_UdonPointLightVolumeShadowCount <= 0.0f) return 1.0f;
 
-    float depthShadow = 1.0f;
-    LV_PointLightDepthShadow(id, customIDData.w, lightPositionData.xyz, worldPos, worldNormal, dirN, sqDistanceToLight * invDistanceToLight, depthShadow);
-    lightOcclusion *= depthShadow;
-    return lightOcclusion > 0.0f;
+    float3 shadowData = _UdonPointLightVolumeShadowData[id];
+    [branch] if (shadowData.x == 0.0f) return 1.0f;
+
+    float shadow = 1.0f;
+    LV_PointLightShadow(id, shadowData, lightPositionData.xyz, worldPos, dirN, sqDistanceToLight * invDistanceToLight, shadow);
+    return shadow;
 }
 
 // Projects a quad light into L1 SH using a cheap solid-angle approximation.
@@ -492,7 +484,7 @@ void LV_ProjectFastQuadLightIrradianceSH(float3 lightToWorldPos, float4 rotation
 }
 
 // Samples a quad light, including culling
-void LV_QuadLight(float3 worldPos, float3 centroidPos, float4 rotationQuat, float2 size, float3 color, float sqMaxDist, float occlusion, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b, inout uint count) {
+void LV_QuadLight(float3 worldPos, float3 centroidPos, float4 rotationQuat, float2 size, float3 color, float sqMaxDist, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b, inout uint count) {
 
     float3 lightToWorldPos = worldPos - centroidPos;
 
@@ -502,7 +494,7 @@ void LV_QuadLight(float3 worldPos, float3 centroidPos, float4 rotationQuat, floa
 
     // Attenuate the light based on distance to the bounding sphere, so we don't get hard seam at the edge.
     float sqCutoffDist = sqMaxDist - dot(lightToWorldPos, lightToWorldPos);
-    color.rgb *= saturate(sqCutoffDist / sqMaxDist) * LV_PI * occlusion;
+    color.rgb *= saturate(sqCutoffDist / sqMaxDist) * LV_PI;
 
     L0  += areaLightSH.w * color.rgb;
     L1r += areaLightSH.xyz * color.r;
@@ -523,12 +515,12 @@ float LV_PointLightSolidAngle(float sqdist, float sqlightSize) {
     return saturate(sqrt(sqdist / (sqlightSize + sqdist)));
 }
 
-// Calculares a spherical light source
-void LV_SphereLight(float sqdist, float3 dirN, float sqlightSize, float3 color, float occlusion, float sqMaxDist, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
+// Calculates a spherical light source
+void LV_SphereLight(float sqdist, float3 dirN, float sqlightSize, float3 color, float sqMaxDist, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
     
     float3 att = LV_PointLightAttenuation(sqdist, sqlightSize, color, _UdonLightBrightnessCutoff, sqMaxDist);
 
-    float3 l0 = att * occlusion;
+    float3 l0 = att;
     float3 l1 = dirN * LV_PointLightSolidAngle(sqdist, sqlightSize);
     
     L0 += l0;
@@ -538,11 +530,11 @@ void LV_SphereLight(float sqdist, float3 dirN, float sqlightSize, float3 color, 
     
 }
 
-// Calculares a spherical spot light source
-void LV_SphereSpotLight(float sqdist, float3 dirN, float sqlightSize, float3 att, float spotMask, float cosAngle, float coneFalloff, float occlusion, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
+// Calculates a spherical spot light source
+void LV_SphereSpotLight(float sqdist, float3 dirN, float sqlightSize, float3 att, float spotMask, float cosAngle, float coneFalloff, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
     
     float smoothedCone = LV_Smoothstep01(saturate(spotMask * coneFalloff));
-    float3 l0 = att * (occlusion * smoothedCone);
+    float3 l0 = att * smoothedCone;
     float3 l1 = dirN * LV_PointLightSolidAngle(sqdist, sqlightSize * saturate(1 - cosAngle));
     
     L0 += l0;
@@ -564,11 +556,11 @@ void LV_SphereSpotLightCookieUv(float3 dirN, float4 lightRot, float tanAngle, ou
     isValidUv = true;
 }
 
-// Calculares a spherical spot light source with resolved cookie UV.
-void LV_SphereSpotLightCookie(float sqdist, float3 dirN, float sqlightSize, float3 att, float4 cookie, float tanAngle, float occlusion, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
+// Calculates a spherical spot light source with resolved cookie UV.
+void LV_SphereSpotLightCookie(float sqdist, float3 dirN, float sqlightSize, float3 att, float4 cookie, float tanAngle, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
     float angleSize = saturate(rsqrt(1 + tanAngle * tanAngle));
         
-    float3 l0 = att * cookie.rgb * (cookie.a * occlusion);
+    float3 l0 = att * cookie.rgb * cookie.a;
     float3 l1 = dirN * LV_PointLightSolidAngle(sqdist, sqlightSize * (1 - angleSize));
     
     L0 += l0;
@@ -578,15 +570,15 @@ void LV_SphereSpotLightCookie(float sqdist, float3 dirN, float sqlightSize, floa
     
 }
 
-// Calculares a spherical spot light source
-void LV_SphereSpotLightAttenuationLUT(float sqdist, float3 dirN, float sqlightSize, float3 color, float spotMask, float cosAngle, uint customId, float occlusion, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b, inout uint count) {
+// Calculates a spherical spot light source
+void LV_SphereSpotLightAttenuationLUT(float sqdist, float3 dirN, float sqlightSize, float3 color, float spotMask, float cosAngle, uint customId, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b, inout uint count) {
     
     float dirRadius = sqdist * abs(sqlightSize);
     float spot = 1 - saturate(spotMask * rcp(1 - cosAngle));
     count++;
     uint id = (uint) _UdonPointLightVolumeCubeCount * 5 + customId - 1;
     float3 uvid = float3(sqrt(float2(spot, dirRadius)), id);
-    float3 att = color.rgb * LV_SAMPLE(_UdonPointLightVolumeTexture, uvid).xyz * occlusion;
+    float3 att = color.rgb * LV_SAMPLE(_UdonPointLightVolumeTexture, uvid).xyz;
     
     L0 += att;
     L1r += dirN * att.r;
@@ -596,10 +588,10 @@ void LV_SphereSpotLightAttenuationLUT(float sqdist, float3 dirN, float sqlightSi
 }
 
 // Samples a spot light, point light or quad/area light
-void LV_PointLight(uint id, float3 worldPos, float3 worldNormal, float4 unusedOcclusion, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b, inout uint count) {
+void LV_PointLight(uint id, float3 worldPos, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b, inout uint count) {
     
     // IDs and range data
-    float4 customID_data = _UdonPointLightVolumeCustomID[id];
+    float3 customID_data = _UdonPointLightVolumeCustomID[id];
     int customId = (int) customID_data.x; // Custom Texture ID
     float sqrRange = customID_data.z; // Squared culling distance
     
@@ -607,9 +599,6 @@ void LV_PointLight(uint id, float3 worldPos, float3 worldNormal, float4 unusedOc
     float3 dir = pos.xyz - worldPos;
     float sqlen = max(dot(dir, dir), 1e-6);
     [branch] if (sqlen > sqrRange) return; // Early distance based culling
-    
-    // Processing lights occlusion
-    float lightOcclusion = 1;
     
     float4 color = _UdonPointLightVolumeColor[id]; // Color, angle
     float4 ldir = _UdonPointLightVolumeDirection[id]; // Dir + falloff or Rotation
@@ -638,8 +627,9 @@ void LV_PointLight(uint id, float3 worldPos, float3 worldNormal, float4 unusedOc
             float3 lutUv = float3(sqrt(float2(spot, dirRadius)), textureId);
             float3 att = color.rgb * LV_SAMPLE(_UdonPointLightVolumeTexture, lutUv).xyz;
             [branch] if (max(max(att.r, att.g), att.b) <= 0.0f) return;
-            [branch] if (!LV_PointLightApplyDepthShadow(id, customID_data, pos, worldPos, worldNormal, dirN, sqlen, invLen, lightOcclusion)) return;
-            att *= lightOcclusion;
+            float shadowAttenuation = LV_PointLightShadowAttenuation(id, pos, worldPos, dirN, sqlen, invLen);
+            [branch] if (shadowAttenuation <= 0.0f) return;
+            att *= shadowAttenuation;
 
             L0 += att;
             L1r += dirN * att.r;
@@ -655,15 +645,17 @@ void LV_PointLight(uint id, float3 worldPos, float3 worldNormal, float4 unusedOc
                 uint textureId = (uint) _UdonPointLightVolumeCubeCount * 5 - customId - 1;
                 float4 cookie = LV_SAMPLE(_UdonPointLightVolumeTexture, float3(cookieUv * 0.5f + 0.5f, textureId));
                 [branch] if (cookie.a <= 0.0f || max(max(cookie.r, cookie.g), cookie.b) <= 0.0f) return;
-                [branch] if (!LV_PointLightApplyDepthShadow(id, customID_data, pos, worldPos, worldNormal, dirN, sqlen, invLen, lightOcclusion)) return;
+                float shadowAttenuation = LV_PointLightShadowAttenuation(id, pos, worldPos, dirN, sqlen, invLen);
+                [branch] if (shadowAttenuation <= 0.0f) return;
                 
-                LV_SphereSpotLightCookie(sqlen, dirN, -pos.w, att, cookie, angle, lightOcclusion, L0, L1r, L1g, L1b);
+                LV_SphereSpotLightCookie(sqlen, dirN, -pos.w, att * shadowAttenuation, cookie, angle, L0, L1r, L1g, L1b);
                 
             } else { // If it uses default parametric attenuation
 
-                [branch] if (!LV_PointLightApplyDepthShadow(id, customID_data, pos, worldPos, worldNormal, dirN, sqlen, invLen, lightOcclusion)) return;
+                float shadowAttenuation = LV_PointLightShadowAttenuation(id, pos, worldPos, dirN, sqlen, invLen);
+                [branch] if (shadowAttenuation <= 0.0f) return;
                 
-                LV_SphereSpotLight(sqlen, dirN, -pos.w, att, spotMask, angle, ldir.w, lightOcclusion, L0, L1r, L1g, L1b);
+                LV_SphereSpotLight(sqlen, dirN, -pos.w, att * shadowAttenuation, spotMask, angle, ldir.w, L0, L1r, L1g, L1b);
                 
             }
             
@@ -682,8 +674,9 @@ void LV_PointLight(uint id, float3 worldPos, float3 worldNormal, float4 unusedOc
             float3 uvid = float3(sqrt(float2(0, dirRadius)), textureId);
             float3 att = color.rgb * LV_SAMPLE(_UdonPointLightVolumeTexture, uvid).xyz;
             [branch] if (max(max(att.r, att.g), att.b) <= 0.0f) return;
-            [branch] if (!LV_PointLightApplyDepthShadow(id, customID_data, pos, worldPos, worldNormal, dirN, sqlen, invLen, lightOcclusion)) return;
-            att *= lightOcclusion;
+            float shadowAttenuation = LV_PointLightShadowAttenuation(id, pos, worldPos, dirN, sqlen, invLen);
+            [branch] if (shadowAttenuation <= 0.0f) return;
+            att *= shadowAttenuation;
             
             L0 += att;
             L1r += dirN * att.r;
@@ -692,10 +685,11 @@ void LV_PointLight(uint id, float3 worldPos, float3 worldNormal, float4 unusedOc
             
         } else { // If it uses default parametric attenuation
 
-            [branch] if (!LV_PointLightApplyDepthShadow(id, customID_data, pos, worldPos, worldNormal, dirN, sqlen, invLen, lightOcclusion)) return;
+            float shadowAttenuation = LV_PointLightShadowAttenuation(id, pos, worldPos, dirN, sqlen, invLen);
+            [branch] if (shadowAttenuation <= 0.0f) return;
             
             float3 l0 = 0, l1r = 0, l1g = 0, l1b = 0;
-            LV_SphereLight(sqlen, dirN, pos.w, color.rgb, lightOcclusion, sqrRange, l0, l1r, l1g, l1b);
+            LV_SphereLight(sqlen, dirN, pos.w, color.rgb * shadowAttenuation, sqrRange, l0, l1r, l1g, l1b);
 
             float3 cubeColor = 1;
             [branch] if (customId < 0) { // If it uses a cubemap
@@ -720,8 +714,9 @@ void LV_PointLight(uint id, float3 worldPos, float3 worldNormal, float4 unusedOc
         float invLen = rsqrt(sqlen);
         float3 dirN = dir * invLen;
         count++;
-        [branch] if (!LV_PointLightApplyDepthShadow(id, customID_data, pos, worldPos, worldNormal, dirN, sqlen, invLen, lightOcclusion)) return;
-        float3 areaColor = color.rgb * (attenuation * LV_PI * lightOcclusion);
+        float shadowAttenuation = LV_PointLightShadowAttenuation(id, pos, worldPos, dirN, sqlen, invLen);
+        [branch] if (shadowAttenuation <= 0.0f) return;
+        float3 areaColor = color.rgb * (attenuation * LV_PI * shadowAttenuation);
         L0 += areaLightSH.w * areaColor;
         L1r += areaLightSH.xyz * areaColor.r;
         L1g += areaLightSH.xyz * areaColor.g;
@@ -783,7 +778,7 @@ void LV_VolumeAtlasUVW(uint id, float3 localUVW, out float3 uvw0, out float3 uvw
 }
 
 // Samples a Volume with ID and Local UVW
-void LV_SampleVolume(uint id, float3 localUVW, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b, out float4 occlusion) {
+void LV_SampleVolume(uint id, float3 localUVW, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
     
     // Additive UVW
     float3 uvw0 = 0.0f;
@@ -798,8 +793,6 @@ void LV_SampleVolume(uint id, float3 localUVW, inout float3 L0, inout float3 L1r
     float3 l1b = 0.0f;
     LV_SampleLightVolumeTex(uvw0, uvw1, uvw2, l0, l1r, l1g, l1b);
 
-    occlusion = 1;
-    
     // Color correction
     float4 color = _UdonLightVolumeColor[id];
     L0 += l0 * color.rgb;
@@ -822,7 +815,7 @@ void LV_SampleVolume(uint id, float3 localUVW, inout float3 L0, inout float3 L1r
 }
 
 // Calculates L1 SH based on the world position. Only samples point lights, not light volumes.
-void LV_PointLightVolumeSH(float3 worldPos, float3 worldNormal, float4 unusedOcclusion, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
+void LV_PointLightVolumeSH(float3 worldPos, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
     
     uint pointCount = min((uint) _UdonPointLightVolumeCount, VRCLV_MAX_LIGHTS_COUNT);
     [branch] if (pointCount == 0) return;
@@ -831,32 +824,14 @@ void LV_PointLightVolumeSH(float3 worldPos, float3 worldNormal, float4 unusedOcc
     uint pcount = 0; // Point lights counter
 
     [loop] for (uint pid = 0; pid < pointCount && pcount < maxOverdraw; pid++) {
-        LV_PointLight(pid, worldPos, worldNormal, unusedOcclusion, L0, L1r, L1g, L1b, pcount);
+        LV_PointLight(pid, worldPos, L0, L1r, L1g, L1b, pcount);
     }
     
 }
 
-// Resolves the normal direction used by per-light depth shadow normal bias.
-void LV_NormalBiasNormal(float3 worldNormal, float3 worldPosOffset, out float3 normalBiasNormal) {
-    normalBiasNormal = 0.0f;
-    [branch] if (_UdonPointLightVolumeDepthShadowCount <= 0.0f) return;
+// Calculates L1 SH based on the world position.
+void LV_LightVolumeSH(float3 worldPos, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
 
-    float normalLenSq = dot(worldNormal, worldNormal);
-    [branch] if (normalLenSq > 0.0001f) {
-        normalBiasNormal = worldNormal * rsqrt(normalLenSq);
-        return;
-    }
-
-    float offsetLenSq = dot(worldPosOffset, worldPosOffset);
-    [branch] if (offsetLenSq > 0.0001f) normalBiasNormal = worldPosOffset * rsqrt(offsetLenSq);
-}
-
-// Calculates L1 SH based on the world position. The occlusion output is kept for compatibility and currently stays 1.
-void LV_LightVolumeSH(float3 worldPos, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b, out float4 occlusion) {
-
-    // Initializing output variables
-    occlusion = 1;
-    
     // Clamping gloabal iteration counts
     uint volumesCount = min((uint) _UdonLightVolumeCount, VRCLV_MAX_VOLUMES_COUNT);
     
@@ -889,8 +864,7 @@ void LV_LightVolumeSH(float3 worldPos, inout float3 L0, inout float3 L1r, inout 
         [branch] if (LV_PointLocalAABB(localUVW)) { // Intersection test
             [branch] if (id < additiveCount) { // Sampling additive volumes
                 [branch] if (addVolumesCount < maxOverdraw) {
-                    float4 unusedOcclusion = 1.0f;
-                    LV_SampleVolume(id, localUVW, L0, L1r, L1g, L1b, unusedOcclusion);
+                    LV_SampleVolume(id, localUVW, L0, L1r, L1g, L1b);
                     addVolumesCount++;
                 } 
             } else if (isNoA) { // First, searching for volume A
@@ -921,10 +895,9 @@ void LV_LightVolumeSH(float3 worldPos, inout float3 L0, inout float3 L1r, inout 
     float3 L1r_A = 0;
     float3 L1g_A = 0;
     float3 L1b_A = 0;
-    float4 unusedOcclusion = 1.0f;
     
     // Sampling Light Volume A
-    LV_SampleVolume(volumeID_A, localUVW_A, L0_A, L1r_A, L1g_A, L1b_A, unusedOcclusion);
+    LV_SampleVolume(volumeID_A, localUVW_A, L0_A, L1r_A, L1g_A, L1b_A);
     
     float mask = LV_BoundsMask(localUVW_A, _UdonLightVolumeInvLocalEdgeSmooth[volumeID_A]);
     [branch] if (mask == 1 || isNoA || (_UdonLightVolumeSharpBounds && isNoB)) { // Returning SH A result if it's the center of mask or out of bounds
@@ -953,7 +926,7 @@ void LV_LightVolumeSH(float3 worldPos, inout float3 L0, inout float3 L1r, inout 
         volumeID_B = isNoB ? volumesCount - 1 : volumeID_B;
             
         // Sampling Light Volume B
-        LV_SampleVolume(volumeID_B, localUVW_B, L0_B, L1r_B, L1g_B, L1b_B, unusedOcclusion);
+        LV_SampleVolume(volumeID_B, localUVW_B, L0_B, L1r_B, L1g_B, L1b_B);
         
     }
 
@@ -965,12 +938,9 @@ void LV_LightVolumeSH(float3 worldPos, inout float3 L0, inout float3 L1r, inout 
 
 }
 
-// Calculates L1 SH based on the world position from additive volumes only. The occlusion output is kept for compatibility and currently stays 1.
-void LV_LightVolumeAdditiveSH(float3 worldPos, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b, out float4 occlusion) {
+// Calculates L1 SH based on the world position from additive volumes only.
+void LV_LightVolumeAdditiveSH(float3 worldPos, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
 
-    // Initializing output variables
-    occlusion = 1;
-    
     // Clamping gloabal iteration counts
     uint additiveCount = min((uint) _UdonLightVolumeAdditiveCount, VRCLV_MAX_VOLUMES_COUNT);
     [branch] if (additiveCount == 0 && (uint) _UdonPointLightVolumeCount == 0) return;
@@ -981,8 +951,7 @@ void LV_LightVolumeAdditiveSH(float3 worldPos, inout float3 L0, inout float3 L1r
     [loop] for (uint id = 0; id < additiveCount && addVolumesCount < maxOverdraw; id++) {
         float3 localUVW = LV_LocalFromVolume(id, worldPos);
         [branch] if (LV_PointLocalAABB(localUVW)) {
-            float4 unusedOcclusion = 1.0f;
-            LV_SampleVolume(id, localUVW, L0, L1r, L1g, L1b, unusedOcclusion);
+            LV_SampleVolume(id, localUVW, L0, L1r, L1g, L1b);
             addVolumesCount++;
         }
     }
@@ -1053,57 +1022,47 @@ float3 LightVolumeEvaluate(float3 worldNormal, float3 L0, float3 L1r, float3 L1g
 }
 
 // Calculates L1 SH based on the world position. Samples both light volumes and point lights.
-void LightVolumeSH(float3 worldPos, out float3 L0, out float3 L1r, out float3 L1g, out float3 L1b, float3 worldPosOffset = 0, float3 worldNormal = 0) {
+void LightVolumeSH(float3 worldPos, out float3 L0, out float3 L1r, out float3 L1g, out float3 L1b, float3 worldPosOffset = 0) {
     L0 = 0; L1r = 0; L1g = 0; L1b = 0;
     if (_UdonLightVolumeEnabled == 0) {
         LV_SampleLightProbeDering(L0, L1r, L1g, L1b);
     } else {
-        float4 occlusion = 1;
-        LV_LightVolumeSH(worldPos + worldPosOffset, L0, L1r, L1g, L1b, occlusion);
-        float3 normalBiasNormal = 0.0f;
-        LV_NormalBiasNormal(worldNormal, worldPosOffset, normalBiasNormal);
-        LV_PointLightVolumeSH(worldPos, normalBiasNormal, occlusion, L0, L1r, L1g, L1b);
+        LV_LightVolumeSH(worldPos + worldPosOffset, L0, L1r, L1g, L1b);
+        LV_PointLightVolumeSH(worldPos, L0, L1r, L1g, L1b);
     }
 }
 
 // Calculates L1 SH based on the world position from additive volumes only. Samples both light volumes and point lights.
-void LightVolumeAdditiveSH(float3 worldPos, out float3 L0, out float3 L1r, out float3 L1g, out float3 L1b, float3 worldPosOffset = 0, float3 worldNormal = 0) {
+void LightVolumeAdditiveSH(float3 worldPos, out float3 L0, out float3 L1r, out float3 L1g, out float3 L1b, float3 worldPosOffset = 0) {
     L0 = 0; L1r = 0; L1g = 0; L1b = 0;
     if (_UdonLightVolumeEnabled != 0) {
-        float4 occlusion = 1;
-        LV_LightVolumeAdditiveSH(worldPos + worldPosOffset, L0, L1r, L1g, L1b, occlusion);
-        float3 normalBiasNormal = 0.0f;
-        LV_NormalBiasNormal(worldNormal, worldPosOffset, normalBiasNormal);
-        LV_PointLightVolumeSH(worldPos, normalBiasNormal, occlusion, L0, L1r, L1g, L1b);
+        LV_LightVolumeAdditiveSH(worldPos + worldPosOffset, L0, L1r, L1g, L1b);
+        LV_PointLightVolumeSH(worldPos, L0, L1r, L1g, L1b);
     }
 }
 
 // Calculates L0 SH based on the world position. Samples both light volumes and point lights.
-float3 LightVolumeSH_L0(float3 worldPos, float3 worldPosOffset = 0, float3 worldNormal = 0) {
+float3 LightVolumeSH_L0(float3 worldPos, float3 worldPosOffset = 0) {
     if (_UdonLightVolumeEnabled == 0) {
         return float3(unity_SHAr.w, unity_SHAg.w, unity_SHAb.w);
     } else {
-        float3 L0 = 0; float4 occlusion = 1;
+        float3 L0 = 0;
         float3 unused_L1 = 0.0f; // Let's just pray that compiler will strip everything x.x
-        LV_LightVolumeSH(worldPos + worldPosOffset, L0, unused_L1, unused_L1, unused_L1, occlusion);
-        float3 normalBiasNormal = 0.0f;
-        LV_NormalBiasNormal(worldNormal, worldPosOffset, normalBiasNormal);
-        LV_PointLightVolumeSH(worldPos, normalBiasNormal, occlusion, L0, unused_L1, unused_L1, unused_L1);
+        LV_LightVolumeSH(worldPos + worldPosOffset, L0, unused_L1, unused_L1, unused_L1);
+        LV_PointLightVolumeSH(worldPos, L0, unused_L1, unused_L1, unused_L1);
         return L0;
     }
 }
 
 // Calculates L0 SH based on the world position from additive volumes only. Samples both light volumes and point lights.
-float3 LightVolumeAdditiveSH_L0(float3 worldPos, float3 worldPosOffset = 0, float3 worldNormal = 0) {
+float3 LightVolumeAdditiveSH_L0(float3 worldPos, float3 worldPosOffset = 0) {
     if (_UdonLightVolumeEnabled == 0) {
         return 0;
     } else {
-        float3 L0 = 0; float4 occlusion = 1;
+        float3 L0 = 0;
         float3 unused_L1 = 0.0f; // Let's just pray that compiler will strip everything x.x
-        LV_LightVolumeAdditiveSH(worldPos + worldPosOffset, L0, unused_L1, unused_L1, unused_L1, occlusion);
-        float3 normalBiasNormal = 0.0f;
-        LV_NormalBiasNormal(worldNormal, worldPosOffset, normalBiasNormal);
-        LV_PointLightVolumeSH(worldPos, normalBiasNormal, occlusion, L0, unused_L1, unused_L1, unused_L1);
+        LV_LightVolumeAdditiveSH(worldPos + worldPosOffset, L0, unused_L1, unused_L1, unused_L1);
+        LV_PointLightVolumeSH(worldPos, L0, unused_L1, unused_L1, unused_L1);
         return L0;
     }
 }

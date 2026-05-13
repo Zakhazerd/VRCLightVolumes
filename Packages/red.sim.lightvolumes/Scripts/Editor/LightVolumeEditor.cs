@@ -60,10 +60,8 @@ namespace VRCLightVolumes {
             if (vCount < 0) {
                 EditorGUILayout.HelpBox("Volume density is too high and impossible to calculate and store! Consider using lower density.", MessageType.Error);
             } else {
-                bool bakeOcclusion = LightVolume.PointLightShadows;
-                int occlusionVCount = bakeOcclusion ? LightVolume.GetOcclusionVoxelCount() : 0;
-                GUILayout.Label($"Size in VRAM: {SizeInVRAM(vCount, occlusionVCount)} MB");
-                GUILayout.Label($"Size in bundle: {SizeInBundle(vCount, occlusionVCount)} MB (Approximately)");
+                GUILayout.Label($"Size in VRAM: {SizeInVRAM(vCount)} MB");
+                GUILayout.Label($"Size in bundle: {SizeInBundle(vCount)} MB (Approximately)");
             }
 
 #if BAKERY_INCLUDED
@@ -127,11 +125,6 @@ namespace VRCLightVolumes {
             hiddenFields.Add("BakeryVolume");
 #endif
 
-            if (!LightVolume.PointLightShadows) {
-                hiddenFields.Add("BlurShadows");
-                hiddenFields.Add("ShadowsScale");
-            }
-            
             if (!LightVolume.Bake) {
                 hiddenFields.Add("AdaptiveResolution");
                 hiddenFields.Add("Resolution");
@@ -274,14 +267,14 @@ namespace VRCLightVolumes {
         }
 
         // Real size in VRAM
-        string SizeInVRAM(int vCount, int occlusionVcount) {
-            double mb = (ulong)(vCount * 3f + occlusionVcount) * 8 / (double)(1024 * 1024);
+        string SizeInVRAM(int vCount) {
+            double mb = (ulong)(vCount * 3f) * 8 / (double)(1024 * 1024);
             return mb.ToString("0.00");
         }
 
         // Approximate size in Asset bundle
-        string SizeInBundle(int vCount, int occlusionVcount) {
-            double mb = (ulong)(vCount * 3f + occlusionVcount) * 8 * 0.315f / (double)(1024 * 1024);
+        string SizeInBundle(int vCount) {
+            double mb = (ulong)(vCount * 3f) * 8 * 0.315f / (double)(1024 * 1024);
             return mb.ToString("0.00");
         }
 

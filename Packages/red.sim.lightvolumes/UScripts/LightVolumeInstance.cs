@@ -30,9 +30,6 @@ namespace VRCLightVolumes {
         public Vector4 BoundsUvwMin1 = new Vector4();
         [Tooltip("Min bounds of Texture2 in 3D atlas space. W stores Scale Z.")]
         public Vector4 BoundsUvwMin2 = new Vector4();
-        [Tooltip("Min bounds of occlusion texture in 3D atlas space.")]
-        public Vector4 BoundsUvwMinOcclusion = new Vector4();
-        [Space]
         [Tooltip("Max bounds of Texture0 in 3D atlas space. (Legacy)")]
         public Vector4 BoundsUvwMax0 = new Vector4();
         [Tooltip("Max bounds of Texture1 in 3D atlas space. (Legacy)")]
@@ -52,8 +49,6 @@ namespace VRCLightVolumes {
         public Vector3 RelativeRotationRow1 = Vector3.zero;
         [Tooltip("True if there is any relative rotation. No relative rotation improves performance. Recalculated via the UpdateRotation() method.")]
         public bool IsRotated = false;
-        [Tooltip("True if the volume has baked occlusion.")]
-        public bool BakeOcclusion = false;
         [Tooltip("True if this Light Volume is registered in the Light Volume Manager array. Disabled objects can be unregistered and will register again on enable.")]
         public bool IsInitialized = false;
         [Tooltip("Reference to the Light Volume Manager. Needed for runtime initialization.")]

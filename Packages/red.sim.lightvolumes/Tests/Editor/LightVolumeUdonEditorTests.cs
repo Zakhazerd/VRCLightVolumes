@@ -6,6 +6,7 @@ using UnityEngine;
 namespace VRCLightVolumes.Tests {
     public class LightVolumeUdonEditorTests {
         private const float Epsilon = 0.0001f;
+        private const float ShadowSoftBiasEncodingEpsilon = 0.000001f;
 
         private static readonly int _lightVolumeInvLocalEdgeSmoothID = Shader.PropertyToID("_UdonLightVolumeInvLocalEdgeSmooth");
         private static readonly int _lightVolumeColorID = Shader.PropertyToID("_UdonLightVolumeColor");
@@ -18,18 +19,16 @@ namespace VRCLightVolumes.Tests {
         private static readonly int _lightVolumeRotationQuaternionID = Shader.PropertyToID("_UdonLightVolumeRotationQuaternion");
         private static readonly int _lightVolumeInvWorldMatrixID = Shader.PropertyToID("_UdonLightVolumeInvWorldMatrix");
         private static readonly int _lightVolumeUvwScaleID = Shader.PropertyToID("_UdonLightVolumeUvwScale");
-        private static readonly int _lightVolumeOcclusionUvwID = Shader.PropertyToID("_UdonLightVolumeOcclusionUvw");
-        private static readonly int _lightVolumeOcclusionCountID = Shader.PropertyToID("_UdonLightVolumeOcclusionCount");
         private static readonly int _pointLightPositionID = Shader.PropertyToID("_UdonPointLightVolumePosition");
         private static readonly int _pointLightColorID = Shader.PropertyToID("_UdonPointLightVolumeColor");
         private static readonly int _pointLightDirectionID = Shader.PropertyToID("_UdonPointLightVolumeDirection");
         private static readonly int _pointLightCustomIdID = Shader.PropertyToID("_UdonPointLightVolumeCustomID");
         private static readonly int _pointLightCountID = Shader.PropertyToID("_UdonPointLightVolumeCount");
         private static readonly int _pointLightCubeCountID = Shader.PropertyToID("_UdonPointLightVolumeCubeCount");
-        private static readonly int _pointLightDepthShadowDataID = Shader.PropertyToID("_UdonPointLightVolumeDepthShadowData");
-        private static readonly int _pointLightDepthShadowReprojectionDataID = Shader.PropertyToID("_UdonPointLightVolumeDepthShadowReprojectionData");
-        private static readonly int _pointLightDepthShadowCountID = Shader.PropertyToID("_UdonPointLightVolumeDepthShadowCount");
-        private static readonly int _pointLightDepthShadowResolutionID = Shader.PropertyToID("_UdonPointLightVolumeDepthShadowResolution");
+        private static readonly int _pointLightShadowDataID = Shader.PropertyToID("_UdonPointLightVolumeShadowData");
+        private static readonly int _pointLightShadowReprojectionDataID = Shader.PropertyToID("_UdonPointLightVolumeShadowReprojectionData");
+        private static readonly int _pointLightShadowCountID = Shader.PropertyToID("_UdonPointLightVolumeShadowCount");
+        private static readonly int _pointLightShadowResolutionID = Shader.PropertyToID("_UdonPointLightVolumeShadowResolution");
         private static readonly int _lightBrightnessCutoffID = Shader.PropertyToID("_UdonLightBrightnessCutoff");
         private static readonly BindingFlags _lifecycleMethodFlags = BindingFlags.Instance | BindingFlags.NonPublic;
 
@@ -67,7 +66,7 @@ namespace VRCLightVolumes.Tests {
             AssertGlobalFloat(_lightVolumeEnabledID, 0);
             AssertGlobalFloat(_lightVolumeCountID, 0);
             AssertGlobalFloat(_pointLightCountID, 0);
-            AssertGlobalFloat(_pointLightDepthShadowCountID, 0);
+            AssertGlobalFloat(_pointLightShadowCountID, 0);
         }
 
         // Verifies that empty light-volume and point-light families do not block each other.
@@ -223,9 +222,9 @@ namespace VRCLightVolumes.Tests {
             LightVolumeInstance inactiveVolume = CreateLightVolume(manager, "Inactive Volume", false);
             LightVolumeInstance blackVolume = CreateLightVolume(manager, "Black Volume", true);
             LightVolumeInstance zeroVolume = CreateLightVolume(manager, "Zero Volume", true);
-            ConfigureLightVolume(validVolume, new Color(0.2f, 0.4f, 0.8f, 1), 2, false, false, 0.25f);
-            ConfigureLightVolume(blackVolume, Color.black, 1, false, false, 0.5f);
-            ConfigureLightVolume(zeroVolume, Color.white, 0, false, false, 0.75f);
+            ConfigureLightVolume(validVolume, new Color(0.2f, 0.4f, 0.8f, 1), 2, false, 0.25f);
+            ConfigureLightVolume(blackVolume, Color.black, 1, false, 0.5f);
+            ConfigureLightVolume(zeroVolume, Color.white, 0, false, 0.75f);
 
             PointLightVolumeInstance validPoint = CreatePointLight(manager, "Valid Point", true);
             PointLightVolumeInstance inactivePoint = CreatePointLight(manager, "Inactive Point", false);
@@ -264,7 +263,7 @@ namespace VRCLightVolumes.Tests {
             AssertGlobalFloat(_pointLightCountID, 0);
         }
 
-        // Checks shader globals for volume order, color/intensity changes, movement, occlusion, and additive counters.
+        // Checks shader globals for volume order, color/intensity changes, movement, UVW data, and additive counters.
         [Test]
         public void LightVolumeGlobalsFollowOrderMovementAndParameterChanges() {
             LightVolumeManager manager = CreateManager("Volume Globals Manager", true);
@@ -274,8 +273,8 @@ namespace VRCLightVolumes.Tests {
 
             LightVolumeInstance first = CreateLightVolume(manager, "First Volume", true);
             LightVolumeInstance second = CreateLightVolume(manager, "Second Volume", true);
-            ConfigureLightVolume(first, new Color(0.25f, 0.5f, 0.75f, 1), 1.5f, false, false, 0.1f);
-            ConfigureLightVolume(second, new Color(1, 0.2f, 0.05f, 1), 0.75f, true, true, 0.5f);
+            ConfigureLightVolume(first, new Color(0.25f, 0.5f, 0.75f, 1), 1.5f, false, 0.1f);
+            ConfigureLightVolume(second, new Color(1, 0.2f, 0.05f, 1), 0.75f, true, 0.5f);
             first.transform.position = new Vector3(-1, 0.5f, 2);
             first.transform.localScale = new Vector3(1, 2, 3);
             second.transform.position = new Vector3(2, 3, 4);
@@ -289,7 +288,6 @@ namespace VRCLightVolumes.Tests {
             AssertGlobalFloat(_lightVolumeEnabledID, 1);
             AssertGlobalFloat(_lightVolumeCountID, 2);
             AssertGlobalFloat(_lightVolumeAdditiveCountID, 1);
-            AssertGlobalFloat(_lightVolumeOcclusionCountID, 1);
             AssertGlobalFloat(_lightVolumeProbesBlendID, 0);
             AssertGlobalFloat(_lightVolumeSharpBoundsID, 0);
             AssertGlobalFloat(_lightVolumeAdditiveMaxOverdrawID, 2);
@@ -298,7 +296,6 @@ namespace VRCLightVolumes.Tests {
             AssertVectorClose(second.BoundsUvwMin0, Shader.GetGlobalVectorArray(_lightVolumeUvwScaleID)[0]);
             AssertVectorClose(second.BoundsUvwMin1, Shader.GetGlobalVectorArray(_lightVolumeUvwScaleID)[1]);
             AssertVectorClose(second.BoundsUvwMin2, Shader.GetGlobalVectorArray(_lightVolumeUvwScaleID)[2]);
-            AssertVectorClose(second.BoundsUvwMinOcclusion, Shader.GetGlobalVectorArray(_lightVolumeOcclusionUvwID)[0]);
             AssertVectorClose(second.RelativeRotation, Shader.GetGlobalVectorArray(_lightVolumeRotationQuaternionID)[0]);
             AssertMatrixClose(Matrix4x4.TRS(second.transform.position, second.transform.rotation, second.transform.lossyScale).inverse, Shader.GetGlobalMatrixArray(_lightVolumeInvWorldMatrixID)[0]);
 
@@ -307,7 +304,6 @@ namespace VRCLightVolumes.Tests {
 
             AssertGlobalFloat(_lightVolumeCountID, 1);
             AssertGlobalFloat(_lightVolumeAdditiveCountID, 0);
-            AssertGlobalFloat(_lightVolumeOcclusionCountID, 0);
             AssertVectorClose(ExpectedLightVolumeColor(first), Shader.GetGlobalVectorArray(_lightVolumeColorID)[0]);
 
             second.Intensity = 0.75f;
@@ -315,7 +311,6 @@ namespace VRCLightVolumes.Tests {
             first.Color = Color.green;
             first.Intensity = 2;
             first.IsAdditive = true;
-            first.BakeOcclusion = true;
             first.transform.position = new Vector3(3, 4, 5);
             manager.LightVolumeInstances = new[] { first, second };
 
@@ -324,36 +319,9 @@ namespace VRCLightVolumes.Tests {
             Vector3 expectedSmooth = first.transform.lossyScale / 0.5f;
             AssertGlobalFloat(_lightVolumeCountID, 2);
             AssertGlobalFloat(_lightVolumeAdditiveCountID, 2);
-            AssertGlobalFloat(_lightVolumeOcclusionCountID, 2);
             AssertVectorClose(ExpectedLightVolumeColor(first), Shader.GetGlobalVectorArray(_lightVolumeColorID)[0]);
             AssertVectorClose(new Vector4(expectedSmooth.x, expectedSmooth.y, expectedSmooth.z, 0), Shader.GetGlobalVectorArray(_lightVolumeInvLocalEdgeSmoothID)[0]);
-            AssertVectorClose(first.BoundsUvwMinOcclusion, Shader.GetGlobalVectorArray(_lightVolumeOcclusionUvwID)[0]);
             AssertMatrixClose(Matrix4x4.TRS(first.transform.position, first.transform.rotation, first.transform.lossyScale).inverse, Shader.GetGlobalMatrixArray(_lightVolumeInvWorldMatrixID)[0]);
-        }
-
-        // Verifies all active regular light volumes can write occlusion data at the same time.
-        [Test]
-        public void AllLightVolumesWithOcclusionWriteOcclusionGlobals() {
-            LightVolumeManager manager = CreateManager("All Occlusion Manager", true);
-            const int volumeCount = 8;
-            LightVolumeInstance[] volumes = new LightVolumeInstance[volumeCount];
-
-            for (int i = 0; i < volumeCount; i++) {
-                LightVolumeInstance volume = CreateLightVolume(manager, "Occlusion Volume " + i, true);
-                ConfigureLightVolume(volume, Color.white, 1, false, true, i * 0.1f);
-                volumes[i] = volume;
-            }
-            manager.LightVolumeInstances = volumes;
-
-            manager.UpdateVolumes();
-
-            Vector4[] occlusionData = Shader.GetGlobalVectorArray(_lightVolumeOcclusionUvwID);
-            AssertGlobalFloat(_lightVolumeEnabledID, 1);
-            AssertGlobalFloat(_lightVolumeCountID, volumeCount);
-            AssertGlobalFloat(_lightVolumeOcclusionCountID, volumeCount);
-            for (int i = 0; i < volumeCount; i++) {
-                AssertVectorClose(volumes[i].BoundsUvwMinOcclusion, occlusionData[i]);
-            }
         }
 
         // Verifies dynamic regular and point light transforms are pushed into shader globals after movement.
@@ -414,15 +382,15 @@ namespace VRCLightVolumes.Tests {
             AssertVectorClose(new Vector4(8, 9, 10, 2), point.PositionData);
         }
 
-        // Checks point light shader globals through point, LUT, cookie spot, area, and depth shadow modes.
+        // Checks point light shader globals through point, LUT, cookie spot, area, and Shadow modes.
         [Test]
-        public void PointLightGlobalsFollowModeDepthShadowAndCutoffChanges() {
+        public void PointLightGlobalsWorldSpaceShadowAndCutoffChanges() {
             LightVolumeManager manager = CreateManager("Point Globals Manager", false);
             manager.CubemapsCount = 4;
-            manager.DepthShadowCubemapsCount = 3;
-            manager.DepthShadowResolution = 256;
+            manager.ShadowMapsCount = 3;
+            manager.ShadowResolution = 256;
             manager.CustomTextures = CreateTexture2D("Custom Texture Array");
-            manager.DepthShadowTextures = CreateTexture2D("Depth Shadow Texture Array");
+            manager.ShadowTextures = CreateTexture2D("Shadow Texture Array");
             manager.LightsBrightnessCutoff = 0.2f;
 
             PointLightVolumeInstance point = CreatePointLight(manager, "Point Light", true);
@@ -441,11 +409,11 @@ namespace VRCLightVolumes.Tests {
             AssertGlobalFloat(_lightVolumeEnabledID, 1);
             AssertGlobalFloat(_pointLightCountID, 1);
             AssertGlobalFloat(_pointLightCubeCountID, 4);
-            AssertGlobalFloat(_pointLightDepthShadowResolutionID, 256);
+            AssertGlobalFloat(_pointLightShadowResolutionID, 256);
             AssertGlobalFloat(_lightBrightnessCutoffID, 0.2f);
             AssertVectorClose(new Vector4(2, 3, 4, 4), Shader.GetGlobalVectorArray(_pointLightPositionID)[0]);
             AssertVectorClose(ExpectedPointLightColor(point), Shader.GetGlobalVectorArray(_pointLightColorID)[0]);
-            AssertPointCustomData(point, 0, -1, 0);
+            AssertPointCustomData(point, 0, 0);
 
             point.SetColor(Color.black);
             manager.UpdateVolumes();
@@ -454,29 +422,29 @@ namespace VRCLightVolumes.Tests {
             AssertGlobalFloat(_pointLightCountID, 0);
 
             point.SetColor(new Color(1, 0.5f, 0.25f, 1));
-            point.DepthShadowID = 1;
-            point.DepthShadowFollowLight = false;
-            point.DepthShadowSoftShadows = false;
-            point.DepthShadowBias = -1;
-            point.DepthShadowNormalBias = 0.2f;
-            point.DepthShadowBiasSmoothness = -0.25f;
-            point.DepthShadowBakePosition = new Vector3(5, 6, 7);
+            point.ShadowMapID = 1;
+            point.WorldSpaceShadows = true;
+            point.SoftShadows = false;
+            point.ShadowBias = -1;
+            point.ShadowBiasSmoothness = -0.25f;
+            point.ShadowBakePosition = new Vector3(5, 6, 7);
 
             manager.UpdateVolumes();
 
-            AssertGlobalFloat(_pointLightDepthShadowCountID, 3);
-            AssertPointCustomData(point, 0, -1, 2);
-            AssertVectorClose(new Vector4(0, 0.2f, 0, 0), Shader.GetGlobalVectorArray(_pointLightDepthShadowDataID)[0]);
-            AssertVectorClose(new Vector4(5, 6, 7, 1), Shader.GetGlobalVectorArray(_pointLightDepthShadowReprojectionDataID)[0]);
+            AssertGlobalFloat(_pointLightShadowCountID, 3);
+            AssertPointCustomData(point, 0, 0);
+            AssertVectorClose(new Vector4(2, 0, 0, 0), Shader.GetGlobalVectorArray(_pointLightShadowDataID)[0]);
+            AssertVectorClose(new Vector4(5, 6, 7, 1), Shader.GetGlobalVectorArray(_pointLightShadowReprojectionDataID)[0]);
 
-            point.DepthShadowFollowLight = true;
-            point.DepthShadowBakeRotation = Quaternion.Euler(0, 90, 0);
+            point.WorldSpaceShadows = false;
+            point.ShadowBakeRotation = Quaternion.Euler(0, 90, 0);
 
             manager.UpdateVolumes();
 
-            Quaternion expectedFollowRotation = point.DepthShadowBakeRotation * Quaternion.Inverse(point.transform.rotation);
-            AssertPointCustomData(point, 0, -1, -2);
-            AssertVectorClose(new Vector4(expectedFollowRotation.x, expectedFollowRotation.y, expectedFollowRotation.z, expectedFollowRotation.w), Shader.GetGlobalVectorArray(_pointLightDepthShadowReprojectionDataID)[0]);
+            Quaternion expectedLocalSpaceRotation = point.ShadowBakeRotation * Quaternion.Inverse(point.transform.rotation);
+            AssertPointCustomData(point, 0, 0);
+            AssertVectorClose(new Vector4(-2, 0, 0, 0), Shader.GetGlobalVectorArray(_pointLightShadowDataID)[0]);
+            AssertVectorClose(new Vector4(expectedLocalSpaceRotation.x, expectedLocalSpaceRotation.y, expectedLocalSpaceRotation.z, expectedLocalSpaceRotation.w), Shader.GetGlobalVectorArray(_pointLightShadowReprojectionDataID)[0]);
 
             point.SetLut(2);
             point.SetLightSourceSize(5);
@@ -484,7 +452,7 @@ namespace VRCLightVolumes.Tests {
             manager.UpdateVolumes();
 
             Assert.That(point.IsLut(), Is.True);
-            AssertPointCustomData(point, 3, -1, -2);
+            AssertPointCustomData(point, 3, 0);
             AssertVectorClose(new Vector4(2, 3, 4, point.PositionData.w / point.SquaredScale), Shader.GetGlobalVectorArray(_pointLightPositionID)[0]);
 
             point.SetCustomTexture(1);
@@ -494,7 +462,7 @@ namespace VRCLightVolumes.Tests {
 
             Quaternion expectedCookieRotation = Quaternion.Inverse(point.transform.rotation);
             Assert.That(point.IsSpotLight(), Is.True);
-            AssertPointCustomData(point, -2, -1, -2);
+            AssertPointCustomData(point, -2, 0);
             AssertVectorClose(ExpectedPointLightColor(point), Shader.GetGlobalVectorArray(_pointLightColorID)[0]);
             AssertVectorClose(new Vector4(expectedCookieRotation.x, expectedCookieRotation.y, expectedCookieRotation.z, expectedCookieRotation.w), Shader.GetGlobalVectorArray(_pointLightDirectionID)[0]);
 
@@ -549,49 +517,48 @@ namespace VRCLightVolumes.Tests {
                 Quaternion expectedRotation = Quaternion.Inverse(points[i].transform.rotation);
                 AssertVectorClose(new Vector4(i, i + 1, i + 2, points[i].PositionData.w * points[i].SquaredScale), positions[i]);
                 AssertVectorClose(new Vector4(expectedRotation.x, expectedRotation.y, expectedRotation.z, expectedRotation.w), directions[i]);
-                AssertPointCustomData(i, points[i], -i - 1, -1, 0);
+                AssertPointCustomData(i, points[i], -i - 1, 0);
             }
         }
 
-        // Verifies all active point lights can write depth shadow data together.
+        // Verifies all active point lights can write Shadow data together.
         [Test]
-        public void AllPointLightsWithDepthShadowsWriteDepthShadowGlobals() {
-            LightVolumeManager manager = CreateManager("All Depth Shadow Manager", false);
+        public void AllPointLightsWithShadowWriteShadowGlobals() {
+            LightVolumeManager manager = CreateManager("All Shadow Manager", false);
             const int pointCount = 6;
-            manager.DepthShadowCubemapsCount = pointCount;
-            manager.DepthShadowTextures = CreateTexture2D("All Depth Shadow Texture Array");
+            manager.ShadowMapsCount = pointCount;
+            manager.ShadowTextures = CreateTexture2D("All Shadow Texture Array");
             PointLightVolumeInstance[] points = new PointLightVolumeInstance[pointCount];
 
             for (int i = 0; i < pointCount; i++) {
-                PointLightVolumeInstance point = CreatePointLight(manager, "Depth Shadow Point " + i, true);
-                point.DepthShadowID = i;
-                point.DepthShadowBias = 0.01f * (i + 1);
-                point.DepthShadowNormalBias = 0.02f * (i + 1);
-                point.DepthShadowBiasSmoothness = 0.03f * (i + 1);
-                point.DepthShadowSoftShadows = i % 2 == 0;
-                point.DepthShadowFollowLight = i % 2 == 1;
-                point.DepthShadowBakePosition = new Vector3(i + 3, i + 4, i + 5);
-                point.DepthShadowBakeRotation = Quaternion.Euler(i * 10, i * 15, i * 20);
+                PointLightVolumeInstance point = CreatePointLight(manager, "Shadow Point " + i, true);
+                point.ShadowMapID = i;
+                point.ShadowBias = i == 0 ? 0 : 0.01f * (i + 1);
+                point.ShadowBiasSmoothness = 0.03f * (i + 1);
+                point.SoftShadows = i % 2 == 0;
+                point.WorldSpaceShadows = i % 2 == 0;
+                point.ShadowBakePosition = new Vector3(i + 3, i + 4, i + 5);
+                point.ShadowBakeRotation = Quaternion.Euler(i * 10, i * 15, i * 20);
                 points[i] = point;
             }
             manager.PointLightVolumeInstances = points;
 
             manager.UpdateVolumes();
 
-            Vector4[] depthData = Shader.GetGlobalVectorArray(_pointLightDepthShadowDataID);
-            Vector4[] reprojectionData = Shader.GetGlobalVectorArray(_pointLightDepthShadowReprojectionDataID);
+            Vector4[] shadowData = Shader.GetGlobalVectorArray(_pointLightShadowDataID);
+            Vector4[] reprojectionData = Shader.GetGlobalVectorArray(_pointLightShadowReprojectionDataID);
             AssertGlobalFloat(_lightVolumeEnabledID, 1);
             AssertGlobalFloat(_pointLightCountID, pointCount);
-            AssertGlobalFloat(_pointLightDepthShadowCountID, pointCount);
+            AssertGlobalFloat(_pointLightShadowCountID, pointCount);
             for (int i = 0; i < pointCount; i++) {
-                float expectedDepthState = points[i].DepthShadowFollowLight ? -i - 1 : i + 1;
-                AssertPointCustomData(i, points[i], 0, -1, expectedDepthState);
-                AssertVectorClose(new Vector4(points[i].DepthShadowBias, points[i].DepthShadowNormalBias, points[i].DepthShadowBiasSmoothness, points[i].DepthShadowSoftShadows ? 1 : 0), depthData[i]);
-                if (points[i].DepthShadowFollowLight) {
-                    Quaternion expectedRotation = points[i].DepthShadowBakeRotation * Quaternion.Inverse(points[i].transform.rotation);
-                    AssertVectorClose(new Vector4(expectedRotation.x, expectedRotation.y, expectedRotation.z, expectedRotation.w), reprojectionData[i]);
+                float expectedShadowState = points[i].WorldSpaceShadows ? i + 1 : -i - 1;
+                AssertPointCustomData(i, points[i], 0, 0);
+                AssertVectorClose(new Vector4(expectedShadowState, ExpectedEncodedShadowBias(points[i]), points[i].ShadowBiasSmoothness, 0), shadowData[i]);
+                if (points[i].WorldSpaceShadows) {
+                    AssertVectorClose(new Vector4(points[i].ShadowBakePosition.x, points[i].ShadowBakePosition.y, points[i].ShadowBakePosition.z, 1), reprojectionData[i]);
                 } else {
-                    AssertVectorClose(new Vector4(points[i].DepthShadowBakePosition.x, points[i].DepthShadowBakePosition.y, points[i].DepthShadowBakePosition.z, 1), reprojectionData[i]);
+                    Quaternion expectedRotation = points[i].ShadowBakeRotation * Quaternion.Inverse(points[i].transform.rotation);
+                    AssertVectorClose(new Vector4(expectedRotation.x, expectedRotation.y, expectedRotation.z, expectedRotation.w), reprojectionData[i]);
                 }
             }
         }
@@ -605,7 +572,7 @@ namespace VRCLightVolumes.Tests {
 
             for (int i = 0; i < volumes.Length; i++) {
                 LightVolumeInstance volume = CreateLightVolume(manager, "Clamped Volume " + i, true);
-                ConfigureLightVolume(volume, Color.white, 1, false, false, i * 0.01f);
+                ConfigureLightVolume(volume, Color.white, 1, false, i * 0.01f);
                 volumes[i] = volume;
             }
             for (int i = 0; i < points.Length; i++) {
@@ -655,7 +622,7 @@ namespace VRCLightVolumes.Tests {
             LightVolumeInstance volume = gameObject.AddComponent<LightVolumeInstance>();
             volume.LightVolumeManager = manager;
             volume.IsDynamic = true;
-            ConfigureLightVolume(volume, Color.white, 1, false, false, 0);
+            ConfigureLightVolume(volume, Color.white, 1, false, 0);
             gameObject.SetActive(active);
             if (active && manager != null) manager.InitializeLightVolume(volume);
             return volume;
@@ -673,7 +640,6 @@ namespace VRCLightVolumes.Tests {
             point.DirectionData = new Vector4(0, 0, 1, 1);
             point.Angle = 30 * Mathf.Deg2Rad;
             point.AngleData = Mathf.Cos(point.Angle);
-            point.ShadowmaskIndex = -1;
             gameObject.SetActive(active);
             if (active && manager != null) manager.InitializePointLightVolume(point);
             return point;
@@ -685,7 +651,7 @@ namespace VRCLightVolumes.Tests {
             LightVolumeInstance volume = gameObject.AddComponent<LightVolumeInstance>();
             volume.LightVolumeManager = manager;
             volume.IsDynamic = true;
-            ConfigureLightVolume(volume, Color.white, 1, false, false, 0);
+            ConfigureLightVolume(volume, Color.white, 1, false, 0);
             return volume;
         }
 
@@ -701,7 +667,6 @@ namespace VRCLightVolumes.Tests {
             point.DirectionData = new Vector4(0, 0, 1, 1);
             point.Angle = 30 * Mathf.Deg2Rad;
             point.AngleData = Mathf.Cos(point.Angle);
-            point.ShadowmaskIndex = -1;
             return point;
         }
 
@@ -730,16 +695,14 @@ namespace VRCLightVolumes.Tests {
         }
 
         // Assigns deterministic volume data used by shader global assertions.
-        private static void ConfigureLightVolume(LightVolumeInstance volume, Color color, float intensity, bool isAdditive, bool bakeOcclusion, float offset) {
+        private static void ConfigureLightVolume(LightVolumeInstance volume, Color color, float intensity, bool isAdditive, float offset) {
             volume.Color = color;
             volume.Intensity = intensity;
             volume.IsAdditive = isAdditive;
-            volume.BakeOcclusion = bakeOcclusion;
             volume.InvBakedRotation = Quaternion.identity;
             volume.BoundsUvwMin0 = new Vector4(offset + 0.01f, offset + 0.02f, offset + 0.03f, offset + 0.04f);
             volume.BoundsUvwMin1 = new Vector4(offset + 0.05f, offset + 0.06f, offset + 0.07f, offset + 0.08f);
             volume.BoundsUvwMin2 = new Vector4(offset + 0.09f, offset + 0.1f, offset + 0.11f, offset + 0.12f);
-            volume.BoundsUvwMinOcclusion = new Vector4(offset + 0.13f, offset + 0.14f, offset + 0.15f, offset + 0.16f);
             volume.BoundsUvwMax0 = new Vector4(offset + 0.17f, offset + 0.18f, offset + 0.19f, offset + 0.2f);
             volume.BoundsUvwMax1 = new Vector4(offset + 0.21f, offset + 0.22f, offset + 0.23f, offset + 0.24f);
             volume.BoundsUvwMax2 = new Vector4(offset + 0.25f, offset + 0.26f, offset + 0.27f, offset + 0.28f);
@@ -758,18 +721,24 @@ namespace VRCLightVolumes.Tests {
             return new Vector4(color.r, color.g, color.b, instance.AngleData);
         }
 
+        // Encodes the signed shadow bias the same way as LightVolumeManager does.
+        private static float ExpectedEncodedShadowBias(PointLightVolumeInstance instance) {
+            float bias = Mathf.Max(instance.ShadowBias, 0);
+            return instance.SoftShadows ? -bias - ShadowSoftBiasEncodingEpsilon : bias;
+        }
+
         // Asserts the packed point custom data vector written to the shader.
-        private static void AssertPointCustomData(PointLightVolumeInstance point, float customId, float shadowmaskIndex, float depthShadowState) {
-            AssertPointCustomData(0, point, customId, shadowmaskIndex, depthShadowState);
+        private static void AssertPointCustomData(PointLightVolumeInstance point, float customId, float reserved) {
+            AssertPointCustomData(0, point, customId, reserved);
         }
 
         // Asserts the packed point custom data vector at a specific shader array index.
-        private static void AssertPointCustomData(int index, PointLightVolumeInstance point, float customId, float shadowmaskIndex, float depthShadowState) {
+        private static void AssertPointCustomData(int index, PointLightVolumeInstance point, float customId, float reserved) {
             Vector4 data = Shader.GetGlobalVectorArray(_pointLightCustomIdID)[index];
             Assert.That(data.x, Is.EqualTo(customId).Within(Epsilon));
-            Assert.That(data.y, Is.EqualTo(shadowmaskIndex).Within(Epsilon));
+            Assert.That(data.y, Is.EqualTo(reserved).Within(Epsilon));
             Assert.That(data.z, Is.EqualTo(point.SquaredRange).Within(Epsilon));
-            Assert.That(data.w, Is.EqualTo(depthShadowState).Within(Epsilon));
+            Assert.That(data.w, Is.EqualTo(0).Within(Epsilon));
         }
 
         // Asserts a global float with the shared tolerance.
@@ -842,10 +811,9 @@ namespace VRCLightVolumes.Tests {
             Shader.SetGlobalFloat(_lightVolumeEnabledID, 0);
             Shader.SetGlobalFloat(_lightVolumeCountID, 0);
             Shader.SetGlobalFloat(_lightVolumeAdditiveCountID, 0);
-            Shader.SetGlobalFloat(_lightVolumeOcclusionCountID, 0);
             Shader.SetGlobalFloat(_pointLightCountID, 0);
             Shader.SetGlobalFloat(_pointLightCubeCountID, 0);
-            Shader.SetGlobalFloat(_pointLightDepthShadowCountID, 0);
+            Shader.SetGlobalFloat(_pointLightShadowCountID, 0);
             Shader.SetGlobalFloat(_lightBrightnessCutoffID, 0);
         }
 

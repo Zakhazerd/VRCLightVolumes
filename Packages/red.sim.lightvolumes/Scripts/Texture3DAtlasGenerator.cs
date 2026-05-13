@@ -33,7 +33,7 @@ namespace VRCLightVolumes {
                 OnPreAtlasCreate?.Invoke(volumes);
 
                 // Stacking textures into array
-                Texture3D[] textures = new Texture3D[volumes.Length * 4];
+                Texture3D[] textures = new Texture3D[volumes.Length * 3];
                 for (int i = 0; i < volumes.Length; i++) {
 
                     if (volumes[i] == null) {
@@ -48,7 +48,6 @@ namespace VRCLightVolumes {
                     Texture3D tex0 = volumes[i].Texture0;
                     Texture3D tex1 = volumes[i].Texture1;
                     Texture3D tex2 = volumes[i].Texture2;
-                    Texture3D texS = volumes[i].ShadowsTexture;
 
 #if UNITY_EDITOR
                     // Downscaling progress bar
@@ -62,26 +61,26 @@ namespace VRCLightVolumes {
                         tex0 = LVUtils.DownscaleTexture3D(tex0);
                         tex1 = LVUtils.DownscaleTexture3D(tex1);
                         tex2 = LVUtils.DownscaleTexture3D(tex2);
-                        texS = LVUtils.DownscaleTexture3D(texS);
                         yield return null;
                     }
 
-                    textures[i * 4] = tex0;
-                    textures[i * 4 + 1] = tex1;
-                    textures[i * 4 + 2] = tex2;
-                    textures[i * 4 + 3] = texS;
+                    int textureIndex = i * 3;
+                    textures[textureIndex] = tex0;
+                    textures[textureIndex + 1] = tex1;
+                    textures[textureIndex + 2] = tex2;
 
                 }
 
                 // Color coccecting and Deringing SH
                 texs = new Texture3D[textures.Length];
-                for (int i = 0; i < textures.Length / 4; ++i) {
+                for (int i = 0; i < textures.Length / 3; ++i) {
 
 #if UNITY_EDITOR
-                    Progress.Report(progressId, (float) (i / textures.Length * 0.25f + 1) / progressStepsCount, $"Volumes color correction {i + 1}/{textures.Length / 4}");
+                    Progress.Report(progressId, (float) (i / textures.Length * 0.25f + 1) / progressStepsCount, $"Volumes color correction {i + 1}/{textures.Length / 3}");
 #endif
 
-                    Texture3D[] bundle = { textures[i * 4], textures[i * 4 + 1], textures[i * 4 + 2] };
+                    int textureIndex = i * 3;
+                    Texture3D[] bundle = { textures[textureIndex], textures[textureIndex + 1], textures[textureIndex + 2] };
 
                     float dark = -volumes[i].Shadows * 0.5f;
                     float bright = 1 - volumes[i].Highlights * 0.5f;
@@ -89,10 +88,9 @@ namespace VRCLightVolumes {
                     Texture3DPostprocessResult result = new Texture3DPostprocessResult();
                     yield return PostProcessSphericalHarmonics(bundle, result, dark, bright, volumes[i].Exposure);
 
-                    texs[i * 4] = result.data[0];
-                    texs[i * 4 + 1] = result.data[1];
-                    texs[i * 4 + 2] = result.data[2];
-                    texs[i * 4 + 3] = textures[i * 4 + 3]; // Occlusion texture remains unchanged
+                    texs[textureIndex] = result.data[0];
+                    texs[textureIndex + 1] = result.data[1];
+                    texs[textureIndex + 2] = result.data[2];
                 }
 
                 int count = texs.Length;

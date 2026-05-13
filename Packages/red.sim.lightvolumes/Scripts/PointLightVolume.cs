@@ -12,22 +12,6 @@ namespace VRCLightVolumes {
 
         [Tooltip("Defines whether this point light volume can be moved in runtime. Disabling this option slightly improves performance. Don't forget to enable \"Auto Update Volumes\" in your Light Volumes Setup to have this dynamic updates!")]
         public bool Dynamic = false;
-        [Tooltip("Enables baked shadows for this light. This setting is only available for static lights, which cannot move. You must re-bake your volumes after changing this setting. This incurs some runtime VRAM and performance overhead.")]
-        public bool BakedShadows = false;
-        [Tooltip("Shadow radius for the baked shadows. Higher values will produce softer shadows.")]
-        [Min(0)] public float BakedShadowRadius = 0.1f;
-        [Tooltip("Experimental. Bakes a per-light depth cubemap for point, spot and area light shadows. This can be used together with regular Light Volume shadow masks.")]
-        public bool BakeDepthShadows = false;
-        [Tooltip("Moves and rotates the baked depth cubemap together with this light. When disabled, the baked depth cubemap is always reprojected from its bake position.")]
-        public bool DepthShadowFollowLight = false;
-        [Tooltip("Enables 4-sample PCF filtering for this light's baked depth shadow cubemap. Disable it for cheaper hard depth shadows.")]
-        [InspectorName("Soft Shadows")] public bool DepthShadowSoftShadows = true;
-        [Tooltip("World-space bias in meters applied when comparing shaded points against this light's baked depth shadow cubemap. Larger values reduce shadow acne, but can detach shadows.")]
-        [Min(0)] public float DepthShadowBias = 0.03f;
-        [Tooltip("World-space normal bias in meters applied to shaded points before sampling this light's baked depth shadow cubemap.")]
-        [Min(0)] public float DepthShadowNormalBias = 0f;
-        [Tooltip("World-space smoothing radius in meters around this light's depth shadow bias threshold. 0 keeps the bias threshold sharp.")]
-        [Min(0)] public float DepthShadowBiasSmoothness = 0.02f;
         [Tooltip("Point light is the most performant type. Area light is the heaviest and best suited for dynamic, movable sources. For static lighting, it's recommended to bake regular additive light volumes instead.")]
         public LightType Type = LightType.PointLight;
         [Tooltip("Physical radius of a light source if it was a matte glowing sphere for a point light, or a flashlight reflector for a spot light. Larger size emmits more light without increasing overall intensity.")]
@@ -53,9 +37,22 @@ namespace VRCLightVolumes {
         [Tooltip("Shows overdrawing range gizmo. Less point light volumes intersections - more performance!")]
         public bool DebugRange = false;
 
+        [Tooltip("Includes this light when shadow maps are re-baked from the Light Volume Setup manager.")]
+        [InspectorName("Rebake Shadows")] public bool RebakeShadows = false;
+        [Tooltip("Enables 4-sample PCF filtering for this light's baked cubemap. Disable it for cheaper hard edges.")]
+        [InspectorName("Soft Shadows")] public bool SoftShadows = true;
+        [Tooltip("World-space bias in meters applied when comparing shaded points against this light's baked cubemap. Larger values reduce acne, but can detach contact edges.")]
+        [InspectorName("Bias")]
+        [Min(0)] public float ShadowBias = 0.03f;
+        [Tooltip("World-space smoothing radius in meters around this light's bias threshold. 0 keeps the bias threshold sharp.")]
+        [InspectorName("Bias Smoothness")]
+        [Min(0)] public float ShadowBiasSmoothness = 0.02f;
+        [Tooltip("Enables World Space Shadows using the bake position. Disable for Local Space Shadows that move and rotate with this light.")]
+        [InspectorName("Use World Space")] public bool UseWorldSpace = false;
+
         public int CustomID = 0;
-        [HideInInspector] public int DepthShadowID = -1;
-        [HideInInspector] public Cubemap DepthShadowCubemap = null;
+        [HideInInspector] public int ShadowID = -1;
+        [HideInInspector] public Cubemap ShadowMap = null;
 
         public PointLightVolumeInstance PointLightVolumeInstance;
         public LightVolumeSetup LightVolumeSetup;
@@ -67,8 +64,7 @@ namespace VRCLightVolumes {
         private Texture2D _falloffLUTPrev = null;
         private Texture2D _cookiePrev = null;
         private Cubemap _cubemapPrev = null;
-        private Cubemap _depthShadowCubemapPrev = null;
-        private bool _bakeDepthShadowsPrev = false;
+        private Cubemap _shadowMapPrev = null;
         private LightShape _shapePrev = LightShape.Parametric;
         private LightType _typePrev = LightType.PointLight;
 
@@ -133,11 +129,10 @@ namespace VRCLightVolumes {
                 _typePrev = Type;
                 LightVolumeSetup.GenerateCustomTexturesArray();
             }
-            // Regenerate depth shadow texture array
-            if (_depthShadowCubemapPrev != DepthShadowCubemap || _bakeDepthShadowsPrev != BakeDepthShadows) {
-                _depthShadowCubemapPrev = DepthShadowCubemap;
-                _bakeDepthShadowsPrev = BakeDepthShadows;
-                LightVolumeSetup.GenerateDepthShadowTexturesArray();
+            // Regenerate Shadow texture array
+            if (_shadowMapPrev != ShadowMap) {
+                _shadowMapPrev = ShadowMap;
+                LightVolumeSetup.GenerateShadowTexturesArray();
             }
             // Sync udon script
             if (_prevPos != transform.position || _prevRot != transform.rotation || _prevScl != transform.localScale) {
@@ -165,14 +160,13 @@ namespace VRCLightVolumes {
                 _pointLightVolumeBehaviour.SetProgramVariable("Color", Color);
                 _pointLightVolumeBehaviour.SetProgramVariable("Intensity", Intensity);
                 _pointLightVolumeBehaviour.SetProgramVariable("IsRangeDirty", true);
-                _pointLightVolumeBehaviour.SetProgramVariable("DepthShadowID", (float)GetDepthShadowRuntimeID());
-                _pointLightVolumeBehaviour.SetProgramVariable("DepthShadowFollowLight", DepthShadowFollowLight);
-                _pointLightVolumeBehaviour.SetProgramVariable("DepthShadowSoftShadows", DepthShadowSoftShadows);
-                _pointLightVolumeBehaviour.SetProgramVariable("DepthShadowBias", DepthShadowBias);
-                _pointLightVolumeBehaviour.SetProgramVariable("DepthShadowNormalBias", DepthShadowNormalBias);
-                _pointLightVolumeBehaviour.SetProgramVariable("DepthShadowBiasSmoothness", DepthShadowBiasSmoothness);
-                _pointLightVolumeBehaviour.SetProgramVariable("DepthShadowBakePosition", PointLightVolumeInstance.DepthShadowBakePosition);
-                _pointLightVolumeBehaviour.SetProgramVariable("DepthShadowBakeRotation", PointLightVolumeInstance.DepthShadowBakeRotation);
+                _pointLightVolumeBehaviour.SetProgramVariable("ShadowMapID", (float)GetShadowRuntimeID());
+                _pointLightVolumeBehaviour.SetProgramVariable("WorldSpaceShadows", UseWorldSpace);
+                _pointLightVolumeBehaviour.SetProgramVariable("SoftShadows", SoftShadows);
+                _pointLightVolumeBehaviour.SetProgramVariable("ShadowBias", ShadowBias);
+                _pointLightVolumeBehaviour.SetProgramVariable("ShadowBiasSmoothness", ShadowBiasSmoothness);
+                _pointLightVolumeBehaviour.SetProgramVariable("ShadowBakePosition", PointLightVolumeInstance.ShadowBakePosition);
+                _pointLightVolumeBehaviour.SetProgramVariable("ShadowBakeRotation", PointLightVolumeInstance.ShadowBakeRotation);
                 // Udon does not support methods with parameters, so under the hood, it's just some global variables.
                 // We can first set these parameters and then exetute a parameterless method.
                 if (Type == LightType.PointLight) { // Point light
@@ -248,12 +242,11 @@ namespace VRCLightVolumes {
                 PointLightVolumeInstance.Color = Color;
                 PointLightVolumeInstance.Intensity = Intensity;
                 PointLightVolumeInstance.IsRangeDirty = true;
-                PointLightVolumeInstance.DepthShadowID = GetDepthShadowRuntimeID();
-                PointLightVolumeInstance.DepthShadowFollowLight = DepthShadowFollowLight;
-                PointLightVolumeInstance.DepthShadowSoftShadows = DepthShadowSoftShadows;
-                PointLightVolumeInstance.DepthShadowBias = DepthShadowBias;
-                PointLightVolumeInstance.DepthShadowNormalBias = DepthShadowNormalBias;
-                PointLightVolumeInstance.DepthShadowBiasSmoothness = DepthShadowBiasSmoothness;
+                PointLightVolumeInstance.ShadowMapID = GetShadowRuntimeID();
+                PointLightVolumeInstance.WorldSpaceShadows = UseWorldSpace;
+                PointLightVolumeInstance.SoftShadows = SoftShadows;
+                PointLightVolumeInstance.ShadowBias = ShadowBias;
+                PointLightVolumeInstance.ShadowBiasSmoothness = ShadowBiasSmoothness;
 
                 if (Type == LightType.PointLight) { // Point light
                     if (Shape == LightShape.Custom && Cubemap != null) {
@@ -322,10 +315,10 @@ namespace VRCLightVolumes {
                 FalloffLUT = null;
                 Cookie = null;
                 Cubemap = null;
-                DepthShadowCubemap = null;
+                ShadowMap = null;
 #if UNITY_EDITOR
                 LightVolumeSetup.GenerateCustomTexturesArray();
-                LightVolumeSetup.GenerateDepthShadowTexturesArray();
+                LightVolumeSetup.GenerateShadowTexturesArray();
 #endif
                 LightVolumeSetup.RefreshVolumesList();
                 LightVolumeSetup.SyncUdonScript();
@@ -336,13 +329,13 @@ namespace VRCLightVolumes {
             _isValidated = true;
         }
 
-        // Returns a valid depth shadow cubemap ID or disables the shadow for runtime.
-        private int GetDepthShadowRuntimeID() {
-            return BakeDepthShadows && DepthShadowCubemap != null ? DepthShadowID : -1;
+        // Returns a valid shadow map ID or disables the shadow for runtime.
+        private int GetShadowRuntimeID() {
+            return ShadowMap != null ? ShadowID : -1;
         }
 
-        // Returns the editor-only far clip used by the depth shadow cubemap bake.
-        public float GetDepthShadowFarClip() {
+        // Returns the editor-only far clip used by the shadow map bake.
+        public float GetShadowFarClip() {
             float scale = GetAverageLossyScale();
             float cutoff = LightVolumeSetup != null ? LightVolumeSetup.LightsBrightnessCutoff : 0.35f;
             if (Type == LightType.AreaLight) {
@@ -389,42 +382,42 @@ namespace VRCLightVolumes {
         }
 
 #if UNITY_EDITOR
-        // Bakes or re-bakes the experimental depth shadow cubemap for this light.
-        [ContextMenu("Bake Depth Shadow Cubemap")]
-        public void BakeDepthShadowCubemap() {
-            BakeDepthShadowCubemap("", true);
+        // Bakes or re-bakes the shadow map for this light.
+        [ContextMenu("Bake Shadow Map")]
+        public void BakeShadowMap() {
+            BakeShadowMap("", true);
         }
 
-        // Bakes or re-bakes the experimental depth shadow cubemap for this light.
-        public bool BakeDepthShadowCubemap(string infoString, bool regenerateArray) {
+        // Bakes or re-bakes the shadow map for this light.
+        public bool BakeShadowMap(string infoString, bool regenerateArray) {
             SetupDependencies();
-            BakeDepthShadows = true;
-            float farClip = GetDepthShadowFarClip();
-            int resolution = LightVolumeSetup != null ? (int)LightVolumeSetup.DepthShadowResolution : 128;
-            Cubemap cubemap = PointLightDepthShadowBaker.BakeDepthCubemap(this, resolution, farClip, infoString);
+            float farClip = GetShadowFarClip();
+            int resolution = LightVolumeSetup != null ? (int)LightVolumeSetup.ShadowResolution : 128;
+            TextureFormat format = LightVolumeSetup != null ? LightVolumeSetup.GetShadowTextureFormat() : TextureFormat.RHalf;
+            Cubemap cubemap = PointLightShadowBaker.BakeShadowMap(this, resolution, farClip, format, infoString);
             if (cubemap == null) return false;
 
             string scenePath = UnityEngine.SceneManagement.SceneManager.GetActiveScene().path;
-            string path = $"{System.IO.Path.GetDirectoryName(scenePath)}/{UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}/VRCLightVolumes/Temp/{gameObject.name}_depth_shadows.asset";
+            string path = $"{System.IO.Path.GetDirectoryName(scenePath)}/{UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}/VRCLightVolumes/Temp/{gameObject.name}_shadows.asset";
             if (UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path) != null) {
                 UnityEditor.AssetDatabase.DeleteAsset(path);
             }
             LVUtils.SaveAsAsset(cubemap, path);
 
-            DepthShadowCubemap = cubemap;
-            PointLightVolumeInstance.DepthShadowBakePosition = transform.position;
-            PointLightVolumeInstance.DepthShadowBakeRotation = transform.rotation;
-            _depthShadowCubemapPrev = DepthShadowCubemap;
-            _bakeDepthShadowsPrev = BakeDepthShadows;
+            ShadowMap = cubemap;
+            PointLightVolumeInstance.ShadowBakePosition = transform.position;
+            PointLightVolumeInstance.ShadowBakeRotation = transform.rotation;
+            _shadowMapPrev = ShadowMap;
             LVUtils.MarkDirty(this);
             LVUtils.MarkDirty(PointLightVolumeInstance);
 
             if (regenerateArray && LightVolumeSetup != null) {
-                LightVolumeSetup.GenerateDepthShadowTexturesArray();
+                LightVolumeSetup.GenerateShadowTexturesArray();
             }
             SyncUdonScript();
             return true;
         }
+
 #endif
 
         public enum LightShape {

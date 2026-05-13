@@ -25,14 +25,19 @@ namespace VRCLightVolumes {
         [SerializeField] public List<PointLightVolume> PointLightVolumes = new List<PointLightVolume>();
 
         [Header("Point Light Volumes")]
+        [Tooltip("Resolution used for point light cookie, LUT and cubemap projection textures.")]
+        [InspectorName("Cookie Resolution")]
         public TextureArrayResolution Resolution = TextureArrayResolution._128x128;
+        [Tooltip("Texture format used for point light cookie, LUT and cubemap projection textures.")]
+        [InspectorName("Cookie Format")]
         public TextureArrayFormat Format = TextureArrayFormat.RGBAHalf;
         [Tooltip("The minimum brightness at a point due to lighting from a Point Light Volume, before the light is culled. Larger values will result in better performance, but light attenuation will be less physically correct.")]
+        [InspectorName("Brightness Cutoff")]
         [Range(0.05f, 1f)] public float LightsBrightnessCutoff = 0.35f;
-
-        [Header("Depth Shadows")]
-        [Tooltip("Resolution used for experimental per-light depth shadow cubemaps.")]
-        public TextureArrayResolution DepthShadowResolution = TextureArrayResolution._128x128;
+        [Tooltip("Resolution used for per-light shadow maps.")]
+        public TextureArrayResolution ShadowResolution = TextureArrayResolution._128x128;
+        [Tooltip("Texture format used for per-light shadow maps. RHalf is smaller, RFloat is more precise.")]
+        public ShadowTextureFormat ShadowFormat = ShadowTextureFormat.RHalf;
 
         [Header("Baking")]
         [Tooltip("Bakery usually gives better results and works faster.")]
@@ -90,12 +95,13 @@ namespace VRCLightVolumes {
         public bool IsLegacyUVWConverted = false; // Is legacy UVW fix applied. Only need to do it once, so it's a flag for that
 
         private TextureArrayResolution _resolutionPrev = TextureArrayResolution._128x128;
-        private TextureArrayResolution _depthShadowResolutionPrev = TextureArrayResolution._128x128;
+        private TextureArrayResolution _shadowResolutionPrev = TextureArrayResolution._64x64;
+        private ShadowTextureFormat _shadowFormatPrev = ShadowTextureFormat.RHalf;
         private TextureArrayFormat _formatPrev = TextureArrayFormat.RGBAHalf;
 #if UNITY_EDITOR
         private EditorCoroutine _generateAtlasCoroutine = null;
         private EditorCoroutine _generateTextureArrayCoroutine = null;
-        private EditorCoroutine _generateDepthShadowArrayCoroutine = null;
+        private EditorCoroutine _generateShadowArrayCoroutine = null;
 #endif
         public void RefreshVolumesList() {
 
@@ -239,45 +245,45 @@ namespace VRCLightVolumes {
 
         }
 
-        // Generates the experimental depth shadow cubemap array based on all baked PointLightVolumes.
-        List<PointLightVolume> _depthShadowVolumes = new List<PointLightVolume>();
-        public void GenerateDepthShadowTexturesArray() {
+        // Generates the shadow map array based on all PointLightVolumes with assigned shadow maps.
+        List<PointLightVolume> _shadowVolumes = new List<PointLightVolume>();
+        public void GenerateShadowTexturesArray() {
 
             SetupDependencies();
 
             if (LightVolumeManager == null || DontSync) return;
 
             List<Texture> textures = new List<Texture>();
-            _depthShadowVolumes.Clear();
+            _shadowVolumes.Clear();
 
             int count = PointLightVolumes.Count;
             for (int i = 0; i < count; i++) {
                 PointLightVolume pointLightVolume = PointLightVolumes[i];
                 if (pointLightVolume == null) continue;
-                if (pointLightVolume.BakeDepthShadows && pointLightVolume.DepthShadowCubemap != null) {
-                    textures.Add(pointLightVolume.DepthShadowCubemap);
-                    _depthShadowVolumes.Add(pointLightVolume);
-                } else if (pointLightVolume.DepthShadowID != -1) {
-                    pointLightVolume.DepthShadowID = -1;
+                if (pointLightVolume.ShadowMap != null) {
+                    textures.Add(pointLightVolume.ShadowMap);
+                    _shadowVolumes.Add(pointLightVolume);
+                } else if (pointLightVolume.ShadowID != -1) {
+                    pointLightVolume.ShadowID = -1;
                     pointLightVolume.SyncUdonScript();
                     LVUtils.MarkDirty(pointLightVolume);
                 }
             }
 
-            if (_generateDepthShadowArrayCoroutine != null) {
-                EditorCoroutineUtility.StopCoroutine(_generateDepthShadowArrayCoroutine);
-                _generateDepthShadowArrayCoroutine = null;
+            if (_generateShadowArrayCoroutine != null) {
+                EditorCoroutineUtility.StopCoroutine(_generateShadowArrayCoroutine);
+                _generateShadowArrayCoroutine = null;
             }
 
-            if (_depthShadowVolumes.Count == 0) {
+            if (_shadowVolumes.Count == 0) {
 #if UDONSHARP
                 if (Application.isPlaying) {
-                    _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowTextures", null);
-                    _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowCubemapsCount", 0);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowTextures", null);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowMapsCount", 0);
                 } else {
 #endif
-                    LightVolumeManager.DepthShadowTextures = null;
-                    LightVolumeManager.DepthShadowCubemapsCount = 0;
+                    LightVolumeManager.ShadowTextures = null;
+                    LightVolumeManager.ShadowMapsCount = 0;
 #if UDONSHARP
                 }
 #endif
@@ -285,45 +291,45 @@ namespace VRCLightVolumes {
                 return;
             }
 
-            _generateDepthShadowArrayCoroutine = EditorCoroutineUtility.StartCoroutine(TextureArrayGenerator.CreateTexture2DArrayAsync(textures, (int)DepthShadowResolution, TextureFormat.RHalf, (texArray, ids) => {
+            _generateShadowArrayCoroutine = EditorCoroutineUtility.StartCoroutine(TextureArrayGenerator.CreateTexture2DArrayAsync(textures, (int)ShadowResolution, GetShadowTextureFormat(), (texArray, ids) => {
 
                 if (DontSync) {
-                    _generateDepthShadowArrayCoroutine = null;
+                    _generateShadowArrayCoroutine = null;
                     return;
                 }
 
                 if (texArray != null) {
                     for (int i = 0; i < ids.Length; i++) {
-                        if (_depthShadowVolumes[i] != null) {
-                            _depthShadowVolumes[i].DepthShadowID = ids[i];
-                            _depthShadowVolumes[i].SyncUdonScript();
-                            LVUtils.MarkDirty(_depthShadowVolumes[i]);
+                        if (_shadowVolumes[i] != null) {
+                            _shadowVolumes[i].ShadowID = ids[i];
+                            _shadowVolumes[i].SyncUdonScript();
+                            LVUtils.MarkDirty(_shadowVolumes[i]);
                         }
                     }
                 }
 #if UDONSHARP
                 if (Application.isPlaying) {
-                    _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowTextures", texArray);
-                    _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowCubemapsCount", texArray != null ? texArray.depth / 6 : 0);
-                    _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowResolution", (float)DepthShadowResolution);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowTextures", texArray);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowMapsCount", texArray != null ? texArray.depth / 6 : 0);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowResolution", (float)ShadowResolution);
                 } else {
 #endif
-                    LightVolumeManager.DepthShadowTextures = texArray;
-                    LightVolumeManager.DepthShadowCubemapsCount = texArray != null ? texArray.depth / 6 : 0;
-                    LightVolumeManager.DepthShadowResolution = (float)DepthShadowResolution;
+                    LightVolumeManager.ShadowTextures = texArray;
+                    LightVolumeManager.ShadowMapsCount = texArray != null ? texArray.depth / 6 : 0;
+                    LightVolumeManager.ShadowResolution = (float)ShadowResolution;
 #if UDONSHARP
                 }
 #endif
                 if (texArray != null) {
                     texArray.filterMode = FilterMode.Point;
-                    string assetPath = $"{Path.GetDirectoryName(SceneManager.GetActiveScene().path)}/{SceneManager.GetActiveScene().name}/VRCLightVolumes/PointLightVolumeDepthShadowArray.asset";
+                    string assetPath = $"{Path.GetDirectoryName(SceneManager.GetActiveScene().path)}/{SceneManager.GetActiveScene().name}/VRCLightVolumes/PointLightVolumeShadowArray.asset";
                     if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath) != null) {
                         AssetDatabase.DeleteAsset(assetPath);
                     }
                     LVUtils.SaveAsAssetDelayed(texArray, assetPath);
                 }
 
-                _generateDepthShadowArrayCoroutine = null;
+                _generateShadowArrayCoroutine = null;
 
                 SyncUdonScript();
 
@@ -403,9 +409,6 @@ namespace VRCLightVolumes {
                         volumes[i].Texture2 = volumes[i].BakeryVolume.bakedTexture2;
                     }
                 }
-                if (volumes[i].PointLightShadows) {
-                    volumes[i].BakeOcclusionTexture($"| {volumes[i].gameObject.name} ({i}/{volumes.Length})");
-                }
             }
             if (FixLightProbesL1) FixLightProbes();
             GenerateAtlas();
@@ -424,9 +427,6 @@ namespace VRCLightVolumes {
                 if (volumes[i].Bake) {
                     Debug.Log($"[LightVolumeSetup] Adding additional probes to bake with Light Volume \"{volumes[i].gameObject.name}\" using Unity Lightmapper. Group {i}");
                     volumes[i].SetAdditionalProbes(i);
-                }
-                if (volumes[i].PointLightShadows) {
-                    volumes[i].BakeOcclusionTexture($"| {volumes[i].gameObject.name} ({i}/{volumes.Length})");
                 }
             }
         }
@@ -469,9 +469,10 @@ namespace VRCLightVolumes {
                 _formatPrev = Format;
                 GenerateCustomTexturesArray();
             }
-            if (_depthShadowResolutionPrev != DepthShadowResolution) {
-                _depthShadowResolutionPrev = DepthShadowResolution;
-                GenerateDepthShadowTexturesArray();
+            if (_shadowResolutionPrev != ShadowResolution || _shadowFormatPrev != ShadowFormat) {
+                _shadowResolutionPrev = ShadowResolution;
+                _shadowFormatPrev = ShadowFormat;
+                GenerateShadowTexturesArray();
             }
             if (!Application.isPlaying) {
                 LightVolumeManager.UpdateVolumes();
@@ -531,7 +532,7 @@ namespace VRCLightVolumes {
 
                 LightVolumeDataList.Clear();
 
-                int lvCount = (int)Mathf.Min(LightVolumes.Count, Mathf.Min(Mathf.Floor(atlas.BoundsUvwMax.Length / 4), Mathf.Floor(atlas.BoundsUvwMin.Length / 4)));
+                int lvCount = (int)Mathf.Min(LightVolumes.Count, Mathf.Min(Mathf.Floor(atlas.BoundsUvwMax.Length / 3), Mathf.Floor(atlas.BoundsUvwMin.Length / 3)));
                 for (int i = 0; i < lvCount; i++) {
 
                     if (LightVolumes[i] == null) continue;
@@ -539,11 +540,11 @@ namespace VRCLightVolumes {
 
                     if (lightVolumeInstance == null) continue;
 
-                    Vector3 scale = atlas.BoundsUvwMax[i * 4] - atlas.BoundsUvwMin[i * 4];
-                    Vector3 uvwMin0 = atlas.BoundsUvwMin[i * 4];
-                    Vector3 uvwMin1 = atlas.BoundsUvwMin[i * 4 + 1];
-                    Vector3 uvwMin2 = atlas.BoundsUvwMin[i * 4 + 2];
-                    Vector4 uvwMinOcclusion = atlas.BoundsUvwMin[i * 4 + 3];
+                    int atlasIndex = i * 3;
+                    Vector3 scale = atlas.BoundsUvwMax[atlasIndex] - atlas.BoundsUvwMin[atlasIndex];
+                    Vector3 uvwMin0 = atlas.BoundsUvwMin[atlasIndex];
+                    Vector3 uvwMin1 = atlas.BoundsUvwMin[atlasIndex + 1];
+                    Vector3 uvwMin2 = atlas.BoundsUvwMin[atlasIndex + 2];
 #if UDONSHARP
                     if (Application.isPlaying) {
 
@@ -552,23 +553,21 @@ namespace VRCLightVolumes {
                         lightVolumeBehaviour.SetProgramVariable("BoundsUvwMin0", new Vector4(uvwMin0.x, uvwMin0.y, uvwMin0.z, scale.x));
                         lightVolumeBehaviour.SetProgramVariable("BoundsUvwMin1", new Vector4(uvwMin1.x, uvwMin1.y, uvwMin1.z, scale.y));
                         lightVolumeBehaviour.SetProgramVariable("BoundsUvwMin2", new Vector4(uvwMin2.x, uvwMin2.y, uvwMin2.z, scale.z));
-                        lightVolumeBehaviour.SetProgramVariable("BoundsUvwMinOcclusion", new Vector4(uvwMinOcclusion.x, uvwMinOcclusion.y, uvwMinOcclusion.z, LightVolumes[i].ShadowsScale));
 
-                        lightVolumeBehaviour.SetProgramVariable("BoundsUvwMax0", (Vector4) atlas.BoundsUvwMax[i * 4]);
-                        lightVolumeBehaviour.SetProgramVariable("BoundsUvwMax1", (Vector4) atlas.BoundsUvwMax[i * 4 + 1]);
-                        lightVolumeBehaviour.SetProgramVariable("BoundsUvwMax2", (Vector4) atlas.BoundsUvwMax[i * 4 + 2]);
+                        lightVolumeBehaviour.SetProgramVariable("BoundsUvwMax0", (Vector4) atlas.BoundsUvwMax[atlasIndex]);
+                        lightVolumeBehaviour.SetProgramVariable("BoundsUvwMax1", (Vector4) atlas.BoundsUvwMax[atlasIndex + 1]);
+                        lightVolumeBehaviour.SetProgramVariable("BoundsUvwMax2", (Vector4) atlas.BoundsUvwMax[atlasIndex + 2]);
 
                     } else {
 #endif
                         lightVolumeInstance.BoundsUvwMin0 = new Vector4(uvwMin0.x, uvwMin0.y, uvwMin0.z, scale.x);
                         lightVolumeInstance.BoundsUvwMin1 = new Vector4(uvwMin1.x, uvwMin1.y, uvwMin1.z, scale.y);
                         lightVolumeInstance.BoundsUvwMin2 = new Vector4(uvwMin2.x, uvwMin2.y, uvwMin2.z, scale.z);
-                        lightVolumeInstance.BoundsUvwMinOcclusion = new Vector4(uvwMinOcclusion.x, uvwMinOcclusion.y, uvwMinOcclusion.z, LightVolumes[i].ShadowsScale);
 
                         // Legacy
-                        lightVolumeInstance.BoundsUvwMax0 = (Vector4) atlas.BoundsUvwMax[i * 4];
-                        lightVolumeInstance.BoundsUvwMax1 = (Vector4) atlas.BoundsUvwMax[i * 4 + 1];
-                        lightVolumeInstance.BoundsUvwMax2 = (Vector4) atlas.BoundsUvwMax[i * 4 + 2];
+                        lightVolumeInstance.BoundsUvwMax0 = (Vector4) atlas.BoundsUvwMax[atlasIndex];
+                        lightVolumeInstance.BoundsUvwMax1 = (Vector4) atlas.BoundsUvwMax[atlasIndex + 1];
+                        lightVolumeInstance.BoundsUvwMax2 = (Vector4) atlas.BoundsUvwMax[atlasIndex + 2];
 #if UDONSHARP
                     }
 #endif
@@ -645,7 +644,7 @@ namespace VRCLightVolumes {
                 _lightVolumeManagerBehaviour.SetProgramVariable("SharpBounds", SharpBounds);
                 _lightVolumeManagerBehaviour.SetProgramVariable("AdditiveMaxOverdraw", AdditiveMaxOverdraw);
                 _lightVolumeManagerBehaviour.SetProgramVariable("AreaLightBrightnessCutoff", LightsBrightnessCutoff);
-                _lightVolumeManagerBehaviour.SetProgramVariable("DepthShadowResolution", (float)DepthShadowResolution);
+                _lightVolumeManagerBehaviour.SetProgramVariable("ShadowResolution", (float)ShadowResolution);
 
                 if (LightVolumes.Count != 0) {
                     var instances = LightVolumeDataSorter.GetData(LightVolumeDataSorter.SortData(LightVolumeDataList));
@@ -673,7 +672,7 @@ namespace VRCLightVolumes {
                 LightVolumeManager.SharpBounds = SharpBounds;
                 LightVolumeManager.AdditiveMaxOverdraw = AdditiveMaxOverdraw;
                 LightVolumeManager.LightsBrightnessCutoff = LightsBrightnessCutoff;
-                LightVolumeManager.DepthShadowResolution = (float)DepthShadowResolution;
+                LightVolumeManager.ShadowResolution = (float)ShadowResolution;
 
                 if (LightVolumes.Count != 0) {
                     LightVolumeManager.LightVolumeInstances = LightVolumeDataSorter.GetData(LightVolumeDataSorter.SortData(LightVolumeDataList));
@@ -796,30 +795,22 @@ namespace VRCLightVolumes {
             }
         }
 
-        public void BakeOcclusionVolumes() {
-#if UNITY_EDITOR
-            bool isRebaked = false;
-            for (int i = 0; i < LightVolumes.Count; i++) {
-                if (LightVolumes[i].PointLightShadows && LightVolumes[i].LightVolumeInstance != null) {
-                    bool isBaked = LightVolumes[i].BakeOcclusionTexture($"| {LightVolumes[i].gameObject.name} ({i}/{LightVolumes.Count})");
-                    isRebaked = isRebaked || isBaked;
-                }
-            }
-            if(isRebaked) GenerateAtlas();
-#endif
+        // Returns the selected shadow map texture format.
+        public TextureFormat GetShadowTextureFormat() {
+            return ShadowFormat == ShadowTextureFormat.RFloat ? TextureFormat.RFloat : TextureFormat.RHalf;
         }
 
-        // Bakes all requested experimental per-light depth shadow cubemaps.
-        public void BakeDepthShadowCubemaps() {
+        // Bakes all requested per-light shadow maps.
+        public void BakeShadowMaps() {
 #if UNITY_EDITOR
             bool isRebaked = false;
             for (int i = 0; i < PointLightVolumes.Count; i++) {
                 PointLightVolume pointLightVolume = PointLightVolumes[i];
-                if (pointLightVolume == null || !pointLightVolume.BakeDepthShadows) continue;
-                bool isBaked = pointLightVolume.BakeDepthShadowCubemap($"| {pointLightVolume.gameObject.name} ({i}/{PointLightVolumes.Count})", false);
+                if (pointLightVolume == null || !pointLightVolume.RebakeShadows) continue;
+                bool isBaked = pointLightVolume.BakeShadowMap($"| {pointLightVolume.gameObject.name} ({i}/{PointLightVolumes.Count})", false);
                 isRebaked = isRebaked || isBaked;
             }
-            if (isRebaked) GenerateDepthShadowTexturesArray();
+            if (isRebaked) GenerateShadowTexturesArray();
 #endif
         }
 
@@ -832,6 +823,11 @@ namespace VRCLightVolumes {
             RGBA32 = 4,
             RGBAHalf = 17,
             RGBAFloat = 20
+        }
+
+        public enum ShadowTextureFormat {
+            RHalf,
+            RFloat
         }
 
         public enum TextureArrayResolution {

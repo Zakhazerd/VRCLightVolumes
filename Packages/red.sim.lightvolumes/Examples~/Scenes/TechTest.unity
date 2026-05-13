@@ -576,12 +576,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 0.5235988
   AngleData: 0.8660254
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 115.38307
   SquaredScale: 1.000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &33498728
 Transform:
@@ -611,8 +616,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 1
   LightSourceSize: 0.15
   Range: 0.15
@@ -625,7 +628,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 1
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 33498726}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &33498731
@@ -782,7 +792,7 @@ GameObject:
   m_IsActive: 1
 --- !u!114 &67059433
 MonoBehaviour:
-  m_ObjectHideFlags: 0
+  m_ObjectHideFlags: 2
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
@@ -847,7 +857,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   launchedFromSDKPipeline: 0
   completedSDKPipeline: 0
-  blueprintId: wrld_db77af57-bd8e-4a35-8935-e5b2f9857b69
+  blueprintId: wrld_fac67fec-eaeb-4054-b98a-e42af41e5bff
   contentType: 1
   assetBundleUnityVersion: 
   fallbackStatus: 0
@@ -1066,125 +1076,115 @@ MonoBehaviour:
     SerializedTypeNames:
     - VRC.SDK3.Components.VRCPickup
     - VRC.SDK3.Components.VRCObjectSync
+  - gameObject: {fileID: 4999184572010719999}
+    ID: 72
+    SerializedTypeNames:
+    - VRC.SDK3.Components.VRCPickup
+    - VRC.SDK3.Components.VRCObjectSync
+  - gameObject: {fileID: 4999184572010720001}
+    ID: 73
+    SerializedTypeNames:
+    - VRC.SDK3.Components.VRCPickup
+    - VRC.SDK3.Components.VRCObjectSync
+  - gameObject: {fileID: 4999184572010720000}
+    ID: 74
+    SerializedTypeNames:
+    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 154949968}
     ID: 28
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 2070359843}
     ID: 30
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 1036732744}
     ID: 32
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 33498725}
     ID: 34
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 657256789}
     ID: 36
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 996561021}
     ID: 38
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 2088816030}
     ID: 40
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 377300959}
     ID: 42
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 834285430}
     ID: 43
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 1400850655}
     ID: 44
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 1548001775}
     ID: 45
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 458847873}
     ID: 46
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 1137550073}
     ID: 47
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 1748442013}
     ID: 50
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 309589254}
     ID: 51
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 1773416812}
     ID: 53
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 569909707}
     ID: 55
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 969307521}
     ID: 58
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 938222480}
     ID: 60
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 1541482803}
     ID: 62
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 1644032072}
     ID: 64
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 832882186}
     ID: 66
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 355306799}
     ID: 67
     SerializedTypeNames:
     - VRC.Udon.UdonBehaviour
-    - VRC.Udon.UdonBehaviour
   - gameObject: {fileID: 1038735941}
     ID: 71
     SerializedTypeNames:
-    - VRC.Udon.UdonBehaviour
     - VRC.Udon.UdonBehaviour
   portraitCameraPositionOffset: {x: 0, y: 0, z: 0}
   portraitCameraRotationOffset: {x: 0, y: 1, z: 0, w: -0.00000004371139}
@@ -1680,12 +1680,17 @@ MonoBehaviour:
   CustomID: 5
   Angle: 0.7853982
   AngleData: 0.70710677
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 100.0001
   SquaredScale: 1.000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &154949971
 Transform:
@@ -1715,8 +1720,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 1
   LightSourceSize: 0.25
   Range: 10
@@ -1729,7 +1732,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: 4
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 154949969}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &154949974
@@ -2795,6 +2805,28 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 248012461}
   m_Mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!114 &262900762 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+  m_PrefabInstance: {fileID: 4999184572010719998}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4999184572010720000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 064ede0cbb894e94abe683cb8db91f6f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &262900763 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+  m_PrefabInstance: {fileID: 4999184572010719998}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4999184572010720000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3991214ff74ba5743816cbe6c0a95d54, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &269850829
 GameObject:
   m_ObjectHideFlags: 0
@@ -3211,12 +3243,17 @@ MonoBehaviour:
   CustomID: -5
   Angle: 0.36651915
   AngleData: 0.38386405
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 57.680244
   SquaredScale: 1.0000002
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &309589257
 Transform:
@@ -3246,8 +3283,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 1
   LightSourceSize: 0.15
   Range: 0.15
@@ -3260,7 +3295,14 @@ MonoBehaviour:
   Cookie: {fileID: 2800000, guid: 27f1c5cfd1135214cad2e74411322a39, type: 3}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: 4
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 309589255}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &309589259
@@ -3551,12 +3593,17 @@ MonoBehaviour:
   CustomID: -1
   Angle: 0
   AngleData: 0
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 320.5082
   SquaredScale: 1
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!114 &355306803
 MonoBehaviour:
@@ -3571,8 +3618,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 0
   LightSourceSize: 0.25
   Range: 0.5
@@ -3585,7 +3630,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 8900000, guid: a3434367dd4880041a3a1db4a7d22512, type: 3}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: 0
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 355306802}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &355306805
@@ -3677,12 +3729,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 2.6529005
   AngleData: -0.88294756
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 20.764902
   SquaredScale: 1.000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!114 &377300963
 MonoBehaviour:
@@ -3697,8 +3754,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 1
   LightSourceSize: 0.09
   Range: 0.1
@@ -3711,7 +3766,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: 1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 377300962}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &377300965
@@ -3883,18 +3945,15 @@ MonoBehaviour:
   Texture0: {fileID: 11700000, guid: d6c0c3d573115f8478df3c1ca76d9636, type: 2}
   Texture1: {fileID: 11700000, guid: c8371d85574c8e84fb696d2cc52262a6, type: 2}
   Texture2: {fileID: 11700000, guid: f0393f386e04445458bfb4d48f5ac1ad, type: 2}
-  ShadowsTexture: {fileID: 11700000, guid: ec1b9d3cb336d4e4092e33f5a5fb5697, type: 2}
   Exposure: 0
   Shadows: 0
   Highlights: 0
   Bake: 1
-  PointLightShadows: 1
-  ShadowsScale: 1
-  BlurShadows: 1
   AdaptiveResolution: 1
   VoxelsPerUnit: 8
   Resolution: {x: 62, y: 38, z: 98}
   PreviewVoxels: 0
+  BakeryVolume: {fileID: 0}
   LightVolumeInstance: {fileID: 458847875}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &458847875
@@ -3924,13 +3983,12 @@ MonoBehaviour:
   IsDynamic: 0
   IsAdditive: 0
   InvBakedRotation: {x: 0, y: 0, z: 0, w: 1}
-  BoundsUvwMin0: {x: 0.492, y: 0.018518519, z: 0.505, w: 0.248}
-  BoundsUvwMin1: {x: 0.748, y: 0.018518519, z: 0.005, w: 0.6666667}
-  BoundsUvwMin2: {x: 0.748, y: 0.018518519, z: 0.505, w: 0.49}
-  BoundsUvwMinOcclusion: {x: 0.492, y: 0.018518519, z: 0.005, w: 1}
-  BoundsUvwMax0: {x: 0.74, y: 0.6851852, z: 0.995, w: 0}
-  BoundsUvwMax1: {x: 0.996, y: 0.6851852, z: 0.495, w: 0}
-  BoundsUvwMax2: {x: 0.996, y: 0.6851852, z: 0.995, w: 0}
+  BoundsUvwMin0: {x: 0.015625, y: 0.02631579, z: 0.0019569471, w: 0.96875}
+  BoundsUvwMin1: {x: 0.015625, y: 0.02631579, z: 0.19765167, w: 0.9473684}
+  BoundsUvwMin2: {x: 0.015625, y: 0.02631579, z: 0.39334637, w: 0.19178084}
+  BoundsUvwMax0: {x: 0.984375, y: 0.9736842, z: 0.19373778, w: 0}
+  BoundsUvwMax1: {x: 0.984375, y: 0.9736842, z: 0.3894325, w: 0}
+  BoundsUvwMax2: {x: 0.984375, y: 0.9736842, z: 0.5851272, w: 0}
   InvLocalEdgeSmoothing: {x: 19.342142, y: 11.978732, z: 30.701584, w: 0}
   InvWorldMatrix:
     e00: 0.12925145
@@ -3953,10 +4011,8 @@ MonoBehaviour:
   RelativeRotationRow0: {x: 1, y: 0, z: 0}
   RelativeRotationRow1: {x: 0, y: 1, z: 0}
   IsRotated: 0
-  BakeOcclusion: 1
   IsInitialized: 1
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
 --- !u!4 &458847877
 Transform:
   m_ObjectHideFlags: 0
@@ -4629,12 +4685,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 0
   AngleData: 4
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 95.68202
   SquaredScale: 1.067778
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &569909710
 Transform:
@@ -4664,8 +4725,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 2
   LightSourceSize: 0.25
   Range: 5
@@ -4678,7 +4737,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 1
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 569909708}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &569909713
@@ -5188,12 +5254,17 @@ MonoBehaviour:
   CustomID: 3
   Angle: 0.7853982
   AngleData: 0.70710677
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 100.0001
   SquaredScale: 1.000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &657256792
 Transform:
@@ -5223,8 +5294,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 1
   LightSourceSize: 0.25
   Range: 10
@@ -5237,7 +5306,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: 2
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 657256790}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &657256795
@@ -6275,12 +6351,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 0
   AngleData: 1
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 6.4089146
   SquaredScale: 0.010000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &832882189
 Transform:
@@ -6310,8 +6391,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 0
   LightSourceSize: 0.5
   Range: 0.05
@@ -6324,7 +6403,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 832882187}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &832882192
@@ -6426,8 +6512,12 @@ MonoBehaviour:
   - {fileID: 154949969}
   - {fileID: 1038735944}
   - {fileID: 309589255}
+  - {fileID: 262900762}
   CustomTextures: {fileID: 18700000, guid: 80f51f693c32ab84283c18d6a248e954, type: 2}
   CubemapsCount: 2
+  ShadowTextures: {fileID: 18700000, guid: 065f84c64ad35f647aac0454105b1f0e, type: 2}
+  ShadowMapsCount: 2
+  ShadowResolution: 64
   IsRangeDirty: 0
 --- !u!114 &834285433
 MonoBehaviour:
@@ -6471,9 +6561,12 @@ MonoBehaviour:
   - {fileID: 154949972}
   - {fileID: 1038735945}
   - {fileID: 309589258}
+  - {fileID: 262900763}
   Resolution: 256
   Format: 17
   LightsBrightnessCutoff: 0.35
+  ShadowResolution: 64
+  ShadowFormat: 0
   BakingMode: 0
   Denoise: 1
   DilateInvalidProbes: 1
@@ -6891,12 +6984,17 @@ MonoBehaviour:
   CustomID: -2
   Angle: 0
   AngleData: 0
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 127.97828
   SquaredScale: 1
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &938222483
 Transform:
@@ -6926,8 +7024,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 0
   LightSourceSize: 0.5
   Range: 0.5
@@ -6940,7 +7036,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 8900000, guid: 9978fed9ab897bd4488908ccb29e3815, type: 3}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: 1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 938222481}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &938222486
@@ -7153,12 +7256,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 0
   AngleData: 1
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 6.4089146
   SquaredScale: 0.010000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &969307524
 Transform:
@@ -7188,8 +7296,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 0
   LightSourceSize: 0.5
   Range: 0.05
@@ -7202,7 +7308,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 969307522}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &969307527
@@ -7615,12 +7728,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 0.5235988
   AngleData: 0.8660254
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 115.38307
   SquaredScale: 1.000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &996561024
 Transform:
@@ -7650,8 +7768,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 1
   LightSourceSize: 0.15
   Range: 0.15
@@ -7664,7 +7780,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 996561022}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &996561027
@@ -7951,12 +8074,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 0.5235988
   AngleData: 0.8660254
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 115.38307
   SquaredScale: 1.000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &1036732747
 Transform:
@@ -7986,8 +8114,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 1
   LightSourceSize: 0.15
   Range: 0.15
@@ -8000,7 +8126,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 1036732745}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &1036732750
@@ -8055,8 +8188,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1038735941}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.7071065, y: 0.0000000029682492, z: 0.0000000029682492, w: 0.7071071}
-  m_LocalPosition: {x: 0, y: 1.0500015, z: -0}
+  m_LocalRotation: {x: -0.7071066, y: 0.00000014227632, z: 0.000000023066823, w: 0.707107}
+  m_LocalPosition: {x: -0.00049585104, y: 1.0502131, z: -0.000022530556}
   m_LocalScale: {x: 4, y: 4, z: 2.6666658}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -8087,17 +8220,22 @@ MonoBehaviour:
   Color: {r: 1, g: 0.8445727, b: 0.57169807, a: 1}
   Intensity: 200
   IsDynamic: 1
-  PositionData: {x: -8.090002, y: 1.5800012, z: 0.71112394, w: -0.09}
-  DirectionData: {x: 0.8660247, y: 0.000004084261, z: -0.50000226, w: 3.9833612}
+  PositionData: {x: -8.089995, y: 1.5799956, z: 0.71097696, w: -0.09}
+  DirectionData: {x: 0.8660247, y: 0.0000037449672, z: -0.5000018, w: 3.9833612}
   CustomID: 0
   Angle: 0.72431165
   AngleData: 0.7489557
-  ShadowmaskIndex: 0
+  ShadowMapID: 0
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.5
+  ShadowBiasSmoothness: 1.81
+  ShadowBakePosition: {x: -8.089995, y: 1.5799956, z: 0.71097696}
+  ShadowBakeRotation: {x: -0.8660259, y: -0.0000008046627, z: -0.49999928, w: 0.0000016975853}
   IsInitialized: 1
-  SquaredRange: 923.1547
-  SquaredScale: 1.0000012
+  SquaredRange: 923.1552
+  SquaredScale: 1.0000017
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!114 &1038735945
 MonoBehaviour:
@@ -8112,8 +8250,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 1
-  BakedShadowRadius: 0.1
   Type: 1
   LightSourceSize: 0.3
   Range: 0.3
@@ -8126,7 +8262,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 1
+  SoftShadows: 1
+  ShadowBias: 0.5
+  ShadowBiasSmoothness: 1.81
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: 0
+  ShadowMap: {fileID: 8900000, guid: 9476394838e78494985f0f31636d5625, type: 2}
   PointLightVolumeInstance: {fileID: 1038735944}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &1038735947
@@ -8701,18 +8844,15 @@ MonoBehaviour:
   Texture0: {fileID: 11700000, guid: edda7178f55a7b94d8129b07bc9fdaa1, type: 2}
   Texture1: {fileID: 11700000, guid: 873fadb69991de64fb71d4838063bf4b, type: 2}
   Texture2: {fileID: 11700000, guid: 3c7dcdf0b9c637944998533fffc43c67, type: 2}
-  ShadowsTexture: {fileID: 11700000, guid: 7c03ce762f1a07c4aae8781c3bdaf646, type: 2}
   Exposure: 0
   Shadows: 0
   Highlights: 0
   Bake: 1
-  PointLightShadows: 1
-  ShadowsScale: 2
-  BlurShadows: 1
   AdaptiveResolution: 1
   VoxelsPerUnit: 3
   Resolution: {x: 60, y: 15, z: 89}
   PreviewVoxels: 0
+  BakeryVolume: {fileID: 0}
   LightVolumeInstance: {fileID: 1137550075}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &1137550075
@@ -8742,13 +8882,12 @@ MonoBehaviour:
   IsDynamic: 0
   IsAdditive: 0
   InvBakedRotation: {x: 0, y: 0, z: 0, w: 1}
-  BoundsUvwMin0: {x: 0.004, y: 0.6111111, z: 0.005, w: 0.24000001}
-  BoundsUvwMin1: {x: 0.004, y: 0.6111111, z: 0.505, w: 0.25925928}
-  BoundsUvwMin2: {x: 0.492, y: 0.7222222, z: 0.505, w: 0.445}
-  BoundsUvwMinOcclusion: {x: 0.004, y: 0.018518519, z: 0.005, w: 2}
-  BoundsUvwMax0: {x: 0.244, y: 0.8703704, z: 0.45, w: 0}
-  BoundsUvwMax1: {x: 0.244, y: 0.8703704, z: 0.95, w: 0}
-  BoundsUvwMax2: {x: 0.732, y: 0.9814815, z: 0.95, w: 0}
+  BoundsUvwMin0: {x: 0.015625, y: 0.02631579, z: 0.5890411, w: 0.9375}
+  BoundsUvwMin1: {x: 0.015625, y: 0.4473684, z: 0.5890411, w: 0.36842108}
+  BoundsUvwMin2: {x: 0.015625, y: 0.02631579, z: 0.7671233, w: 0.17416829}
+  BoundsUvwMax0: {x: 0.953125, y: 0.39473686, z: 0.7632094, w: 0}
+  BoundsUvwMax1: {x: 0.953125, y: 0.81578946, z: 0.7632094, w: 0}
+  BoundsUvwMax2: {x: 0.953125, y: 0.39473686, z: 0.9412916, w: 0}
   InvLocalEdgeSmoothing: {x: 80.20979, y: 19.838518, z: 118.409515, w: 0}
   InvWorldMatrix:
     e00: 0.04986922
@@ -8771,10 +8910,8 @@ MonoBehaviour:
   RelativeRotationRow0: {x: 1, y: 0, z: 0}
   RelativeRotationRow1: {x: 0, y: 1, z: 0}
   IsRotated: 0
-  BakeOcclusion: 1
   IsInitialized: 1
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
 --- !u!4 &1137550077
 Transform:
   m_ObjectHideFlags: 0
@@ -11106,18 +11243,15 @@ MonoBehaviour:
   Texture0: {fileID: 11700000, guid: 7c929de8fc4e31641a7a85bfda421068, type: 2}
   Texture1: {fileID: 11700000, guid: 744ef49cb7c6b1e42b53005245197fb4, type: 2}
   Texture2: {fileID: 11700000, guid: 254d69863c2d47c43a176a35c3c6a28f, type: 2}
-  ShadowsTexture: {fileID: 11700000, guid: fd48840abfa13b04ca4fa7de24b13e04, type: 2}
   Exposure: 0
   Shadows: 0
   Highlights: 0
   Bake: 1
-  PointLightShadows: 1
-  ShadowsScale: 1
-  BlurShadows: 1
   AdaptiveResolution: 1
   VoxelsPerUnit: 0.75
   Resolution: {x: 15, y: 11, z: 38}
   PreviewVoxels: 0
+  BakeryVolume: {fileID: 0}
   LightVolumeInstance: {fileID: 1400850657}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &1400850657
@@ -11147,23 +11281,22 @@ MonoBehaviour:
   IsDynamic: 0
   IsAdditive: 0
   InvBakedRotation: {x: 0, y: 0, z: 0, w: 1}
-  BoundsUvwMin0: {x: 0.748, y: 0.7592593, z: 0.505, w: 0.060000002}
-  BoundsUvwMin1: {x: 0.748, y: 0.7592593, z: 0.18, w: 0.2037037}
-  BoundsUvwMin2: {x: 0.748, y: 0.7592593, z: 0.705, w: 0.19}
-  BoundsUvwMinOcclusion: {x: 0.252, y: 0.6111111, z: 0.005, w: 1}
-  BoundsUvwMax0: {x: 0.808, y: 0.962963, z: 0.695, w: 0}
-  BoundsUvwMax1: {x: 0.808, y: 0.962963, z: 0.37, w: 0}
-  BoundsUvwMax2: {x: 0.808, y: 0.962963, z: 0.895, w: 0}
-  InvLocalEdgeSmoothing: {x: 80, y: 58.00812, z: 200, w: 0}
+  BoundsUvwMin0: {x: 0.734375, y: 0.4473684, z: 0.7671233, w: 0.234375}
+  BoundsUvwMin1: {x: 0.734375, y: 0.4473684, z: 0.84540117, w: 0.28947368}
+  BoundsUvwMin2: {x: 0.734375, y: 0.4473684, z: 0.92367905, w: 0.07436401}
+  BoundsUvwMax0: {x: 0.96875, y: 0.7368421, z: 0.8414873, w: 0}
+  BoundsUvwMax1: {x: 0.96875, y: 0.7368421, z: 0.9197652, w: 0}
+  BoundsUvwMax2: {x: 0.96875, y: 0.7368421, z: 0.99804306, w: 0}
+  InvLocalEdgeSmoothing: {x: 80, y: 58.24846, z: 200, w: 0}
   InvWorldMatrix:
     e00: 0.05
     e01: 0
     e02: 0
     e03: 0
     e10: 0
-    e11: 0.06895586
+    e11: 0.068671346
     e12: 0
-    e13: -0.53433794
+    e13: -0.5300702
     e20: 0
     e21: 0
     e22: 0.02
@@ -11176,10 +11309,8 @@ MonoBehaviour:
   RelativeRotationRow0: {x: 1, y: 0, z: 0}
   RelativeRotationRow1: {x: 0, y: 1, z: 0}
   IsRotated: 0
-  BakeOcclusion: 1
   IsInitialized: 1
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
 --- !u!4 &1400850659
 Transform:
   m_ObjectHideFlags: 0
@@ -11189,8 +11320,8 @@ Transform:
   m_GameObject: {fileID: 1400850655}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 7.748985, z: 0}
-  m_LocalScale: {x: 20, y: 14.50203, z: 50}
+  m_LocalPosition: {x: 0, y: 7.7189426, z: 0}
+  m_LocalScale: {x: 20, y: 14.562115, z: 50}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1651303611}
@@ -12682,12 +12813,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 0
   AngleData: 1
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 6.4089146
   SquaredScale: 0.010000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &1541482806
 Transform:
@@ -12717,8 +12853,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 0
   LightSourceSize: 0.5
   Range: 0.05
@@ -12731,7 +12865,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 1541482804}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &1541482809
@@ -12912,13 +13053,12 @@ MonoBehaviour:
   IsDynamic: 0
   IsAdditive: 0
   InvBakedRotation: {x: 0, y: 0, z: 0, w: 1}
-  BoundsUvwMin0: {x: 0.492, y: 0.7592593, z: 0.005, w: 0.17599997}
-  BoundsUvwMin1: {x: 0.492, y: 0.7592593, z: 0.18, w: 0.18518513}
-  BoundsUvwMin2: {x: 0.748, y: 0.7592593, z: 0.005, w: 0.165}
-  BoundsUvwMinOcclusion: {x: 0, y: 0, z: 0, w: 1}
-  BoundsUvwMax0: {x: 0.668, y: 0.9444444, z: 0.17, w: 0}
-  BoundsUvwMax1: {x: 0.668, y: 0.9444444, z: 0.345, w: 0}
-  BoundsUvwMax2: {x: 0.924, y: 0.9444444, z: 0.17, w: 0}
+  BoundsUvwMin0: {x: 0.015625, y: 0.4473684, z: 0.7671233, w: 0.6875}
+  BoundsUvwMin1: {x: 0.015625, y: 0.4473684, z: 0.8356164, w: 0.26315787}
+  BoundsUvwMin2: {x: 0.015625, y: 0.4473684, z: 0.9041096, w: 0.06457925}
+  BoundsUvwMax0: {x: 0.703125, y: 0.7105263, z: 0.83170253, w: 0}
+  BoundsUvwMax1: {x: 0.703125, y: 0.7105263, z: 0.9001957, w: 0}
+  BoundsUvwMax2: {x: 0.703125, y: 0.7105263, z: 0.96868885, w: 0}
   InvLocalEdgeSmoothing: {x: 59.195484, y: 13.075011, z: 43.505676, w: 0}
   InvWorldMatrix:
     e00: 0.06757272
@@ -12941,10 +13081,8 @@ MonoBehaviour:
   RelativeRotationRow0: {x: 1, y: 0, z: 0}
   RelativeRotationRow1: {x: 0, y: 1, z: 0}
   IsRotated: 0
-  BakeOcclusion: 0
   IsInitialized: 1
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
 --- !u!114 &1548001778
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -12965,18 +13103,15 @@ MonoBehaviour:
   Texture0: {fileID: 11700000, guid: 553ff5dd88ebc7740a285e7a11422015, type: 2}
   Texture1: {fileID: 11700000, guid: bbb76d4304a70cc4d89a0f420249b06d, type: 2}
   Texture2: {fileID: 11700000, guid: aade6f074ffeab142b1df7f6a20947ec, type: 2}
-  ShadowsTexture: {fileID: 0}
   Exposure: 0
   Shadows: 0
   Highlights: 0
   Bake: 1
-  PointLightShadows: 0
-  ShadowsScale: 1
-  BlurShadows: 1
   AdaptiveResolution: 1
   VoxelsPerUnit: 3
   Resolution: {x: 44, y: 10, z: 33}
   PreviewVoxels: 0
+  BakeryVolume: {fileID: 0}
   LightVolumeInstance: {fileID: 1548001777}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!4 &1548001779
@@ -13646,12 +13781,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 0
   AngleData: 1
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 6.4089146
   SquaredScale: 0.010000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &1644032075
 Transform:
@@ -13681,8 +13821,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 0
   LightSourceSize: 0.5
   Range: 0.05
@@ -13695,7 +13833,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 1
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 1644032073}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &1644032078
@@ -20844,12 +20989,17 @@ MonoBehaviour:
   CustomID: -4
   Angle: 0.36651915
   AngleData: 0.38386405
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 57.680244
   SquaredScale: 1.0000002
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &1748442016
 Transform:
@@ -20879,8 +21029,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 1
   LightSourceSize: 0.15
   Range: 0.15
@@ -20893,7 +21041,14 @@ MonoBehaviour:
   Cookie: {fileID: 2800000, guid: bb1f2d82f0d4ed4409124d71498e075a, type: 3}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: 3
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 1748442014}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &1748442019
@@ -21195,12 +21350,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 0
   AngleData: 4
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 95.68202
   SquaredScale: 1.067778
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!114 &1773416816
 MonoBehaviour:
@@ -21215,8 +21375,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 2
   LightSourceSize: 0.25
   Range: 5
@@ -21229,7 +21387,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 1773416815}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &1773416818
@@ -24110,12 +24275,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 0.5235988
   AngleData: 0.8660254
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 57.680286
   SquaredScale: 1.000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &2070359846
 Transform:
@@ -24145,8 +24315,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 1
   LightSourceSize: 0.15
   Range: 0.15
@@ -24159,7 +24327,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 1
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 2070359844}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &2070359849
@@ -24375,12 +24550,17 @@ MonoBehaviour:
   CustomID: 0
   Angle: 0.5235988
   AngleData: 0.8660254
-  ShadowmaskIndex: -1
+  ShadowMapID: -1
+  WorldSpaceShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  ShadowBakePosition: {x: 0, y: 0, z: 0}
+  ShadowBakeRotation: {x: 0, y: 0, z: 0, w: 1}
   IsInitialized: 1
   SquaredRange: 115.38307
   SquaredScale: 1.000001
   LightVolumeManager: {fileID: 834285432}
-  IsIterartedThrough: 0
   IsRangeDirty: 0
 --- !u!4 &2088816033
 Transform:
@@ -24410,8 +24590,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Dynamic: 1
-  BakedShadows: 0
-  BakedShadowRadius: 0.1
   Type: 1
   LightSourceSize: 0.15
   Range: 0.15
@@ -24424,7 +24602,14 @@ MonoBehaviour:
   Cookie: {fileID: 0}
   Cubemap: {fileID: 0}
   DebugRange: 0
+  RebakeShadows: 0
+  SoftShadows: 1
+  ShadowBias: 0.03
+  ShadowBiasSmoothness: 0.02
+  UseWorldSpace: 0
   CustomID: -1
+  ShadowID: -1
+  ShadowMap: {fileID: 0}
   PointLightVolumeInstance: {fileID: 2088816031}
   LightVolumeSetup: {fileID: 834285433}
 --- !u!114 &2088816036
@@ -24742,6 +24927,162 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   AllowCollisionOwnershipTransfer: 1
   ForceKinematicOnRemote: 0
+--- !u!1001 &4999184572010719998
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: Shape
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: Cubemap
+      value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: CustomID
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: ShadowID
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: ShadowMap
+      value: 
+      objectReference: {fileID: 8900000, guid: ba4c7c0b3c40d1d4883b3d6b1aa8cce7, type: 2}
+    - target: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: DebugRange
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: ShadowBias
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: SoftShadows
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: RebakeShadows
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: LightVolumeSetup
+      value: 
+      objectReference: {fileID: 834285433}
+    - target: {fileID: 663908901676405138, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: ShadowBiasSmoothness
+      value: 0.05
+      objectReference: {fileID: 0}
+    - target: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: CustomID
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: ShadowBias
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: ShadowMapID
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: SoftShadows
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: IsInitialized
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: DirectionData.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: WorldSpaceShadows
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: LightVolumeManager
+      value: 
+      objectReference: {fileID: 834285432}
+    - target: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: ShadowBiasSmoothness
+      value: 0.05
+      objectReference: {fileID: 0}
+    - target: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: serializationData.Prefab
+      value: 
+      objectReference: {fileID: 2073672221931085055, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+    - target: {fileID: 8002812400347353721, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: m_Name
+      value: Light Cube
+      objectReference: {fileID: 0}
+    - target: {fileID: 8553471361932461264, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8553471361932461264, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.75
+      objectReference: {fileID: 0}
+    - target: {fileID: 8553471361932461264, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8553471361932461264, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 8553471361932461264, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8553471361932461264, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8553471361932461264, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8553471361932461264, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8553471361932461264, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8553471361932461264, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+--- !u!1 &4999184572010719999 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 8002812400347353721, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+  m_PrefabInstance: {fileID: 4999184572010719998}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &4999184572010720000 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5349638595192826261, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+  m_PrefabInstance: {fileID: 4999184572010719998}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &4999184572010720001 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 4604904594674640270, guid: 9c680b0b714cb1d498b0e04ff9f53f3b, type: 3}
+  m_PrefabInstance: {fileID: 4999184572010719998}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -24768,4 +25109,5 @@ SceneRoots:
   - {fileID: 184739947}
   - {fileID: 31709544}
   - {fileID: 1488633172}
+  - {fileID: 4999184572010719998}
   - {fileID: 1355280101}

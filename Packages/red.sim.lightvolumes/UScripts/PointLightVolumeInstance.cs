@@ -1,6 +1,5 @@
 ﻿
 using UnityEngine;
-
 #if UDONSHARP
 using UdonSharp;
 using VRC.SDKBase;
@@ -31,24 +30,20 @@ namespace VRCLightVolumes {
         public float Angle;
         [Tooltip("For point light: unused.\nFor spot light: Cos of outer angle if no custom texture, tan of outer angle otherwise.\nFor area light: 2 + Height.")]
         public float AngleData;
-        [Tooltip("Index of the shadowmask channel used by this light. -1 means no shadowmask.")]
-        public sbyte ShadowmaskIndex = -1;
-        [Tooltip("Index of the experimental depth shadow cubemap used by this light. -1 means no depth shadow.")]
-        public float DepthShadowID = -1;
-        [Tooltip("Moves and rotates the experimental depth shadow cubemap together with this light.")]
-        public bool DepthShadowFollowLight = false;
-        [Tooltip("Enables 4-sample PCF filtering for this light's experimental depth shadow cubemap.")]
-        public bool DepthShadowSoftShadows = true;
-        [Tooltip("World-space bias in meters applied when comparing shaded points against this light's experimental depth shadow cubemap.")]
-        [Min(0)] public float DepthShadowBias = 0.03f;
-        [Tooltip("World-space normal bias in meters applied to shaded points before sampling this light's experimental depth shadow cubemap.")]
-        [Min(0)] public float DepthShadowNormalBias = 0f;
-        [Tooltip("World-space smoothing radius in meters around this light's experimental depth shadow bias threshold.")]
-        [Min(0)] public float DepthShadowBiasSmoothness = 0.02f;
-        [Tooltip("World-space position where the experimental depth shadow cubemap was baked.")]
-        public Vector3 DepthShadowBakePosition = Vector3.zero;
-        [Tooltip("World-space rotation where the experimental depth shadow cubemap was baked.")]
-        public Quaternion DepthShadowBakeRotation = Quaternion.identity;
+        [Tooltip("Index of the shadow map used by this light. -1 means no shadow.")]
+        public float ShadowMapID = -1;
+        [Tooltip("Enables World Space Shadows using the bake position. Disable for Local Space Shadows that move and rotate with this light.")]
+        public bool WorldSpaceShadows = false;
+        [Tooltip("Enables 4-sample PCF filtering for this light's shadow map.")]
+        public bool SoftShadows = true;
+        [Tooltip("World-space bias in meters applied when comparing shaded points against this light's shadow map.")]
+        [Min(0)] public float ShadowBias = 0.03f;
+        [Tooltip("World-space smoothing radius in meters around this light's shadow bias threshold.")]
+        [Min(0)] public float ShadowBiasSmoothness = 0.02f;
+        [Tooltip("World-space position where the shadow map was baked.")]
+        public Vector3 ShadowBakePosition = Vector3.zero;
+        [Tooltip("World-space rotation where the shadow map was baked.")]
+        public Quaternion ShadowBakeRotation = Quaternion.identity;
         [Tooltip("True if this Point Light Volume is registered in the Light Volume Manager array. Disabled objects can be unregistered and will register again on enable.")]
         public bool IsInitialized = false;
         [Tooltip("Squared range after which light will be culled. Should be recalculated by executing UpdateRange() method.")]

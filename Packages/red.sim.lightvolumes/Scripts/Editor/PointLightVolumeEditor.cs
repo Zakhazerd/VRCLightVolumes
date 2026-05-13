@@ -9,8 +9,9 @@ namespace VRCLightVolumes {
     public class PointLightVolumeEditor : Editor {
 
         PointLightVolume PointLightVolume;
-        private static readonly GUIContent _depthShadowCubemapContent = new GUIContent("Depth Shadow Cubemap", "Generated or manually assigned depth cubemap asset used by the common depth shadow texture array.");
-        private static readonly GUIContent _bakeDepthShadowsContent = new GUIContent("Bake Depth Shadows", "Bakes or re-bakes an experimental depth cubemap shadow mask for this light.");
+        private static readonly GUIContent _shadowMapContent = new GUIContent("Shadow Map", "Generated or manually assigned cubemap asset used by the shared texture array.");
+        private static readonly GUIContent _useWorldSpaceContent = new GUIContent("Use World Space", "Enables World Space Shadows using the bake position. Disable for Local Space Shadows that move and rotate with this light.");
+        private static readonly GUIContent _bakeShadowsButtonContent = new GUIContent("Bake Shadows", "Bakes or re-bakes a shadow map for this light.");
 
         private void OnEnable() {
             PointLightVolume = (PointLightVolume)target;
@@ -21,20 +22,13 @@ namespace VRCLightVolumes {
             serializedObject.Update();
 
             List<string> hiddenFields = new List<string> { "m_Script", "CustomID", "PointLightVolumeInstance", "LightVolumeSetup" };
-            hiddenFields.Add("DepthShadowID");
-            hiddenFields.Add("DepthShadowCubemap");
-
-            // Only show shadow radius if user requested baked shadows. Also area lights don't have shadow radius - it's implicit. 
-            if (!PointLightVolume.BakedShadows || PointLightVolume.Type == PointLightVolume.LightType.AreaLight) {
-                hiddenFields.Add("BakedShadowRadius");
-            }
-            if (!PointLightVolume.BakeDepthShadows) {
-                hiddenFields.Add("DepthShadowFollowLight");
-                hiddenFields.Add("DepthShadowSoftShadows");
-                hiddenFields.Add("DepthShadowBias");
-                hiddenFields.Add("DepthShadowNormalBias");
-                hiddenFields.Add("DepthShadowBiasSmoothness");
-            }
+            hiddenFields.Add("ShadowID");
+            hiddenFields.Add("ShadowMap");
+            hiddenFields.Add("RebakeShadows");
+            hiddenFields.Add("SoftShadows");
+            hiddenFields.Add("ShadowBias");
+            hiddenFields.Add("ShadowBiasSmoothness");
+            hiddenFields.Add("UseWorldSpace");
             
             if(PointLightVolume.Type == PointLightVolume.LightType.PointLight) {
                 hiddenFields.Add("Angle");
@@ -76,30 +70,47 @@ namespace VRCLightVolumes {
 
             DrawPropertiesExcluding(serializedObject, hiddenFields.ToArray());
 
-            serializedObject.ApplyModifiedProperties();
+            bool propertiesChanged = serializedObject.ApplyModifiedProperties();
 
-            if (PointLightVolume.BakeDepthShadows) {
-                GUILayout.Space(5);
-                DrawSmallObjectField(serializedObject.FindProperty("DepthShadowCubemap"), _depthShadowCubemapContent, typeof(Cubemap));
-                if (PointLightVolume.Dynamic) {
-                    if (PointLightVolume.DepthShadowFollowLight) {
-                        EditorGUILayout.HelpBox("Depth shadow cubemap moves and rotates together with this light. This keeps the mask local to the light transform.", MessageType.Info);
-                    } else {
-                        EditorGUILayout.HelpBox("Depth shadow cubemap reprojects automatically from the bake position. Large movements can produce artifacts.", MessageType.Info);
-                    }
-                }
-                if (GUILayout.Button(_bakeDepthShadowsContent)) {
-                    for (int i = 0; i < targets.Length; i++) {
-                        PointLightVolume pointLightVolume = targets[i] as PointLightVolume;
-                        if (pointLightVolume != null) {
-                            pointLightVolume.BakeDepthShadowCubemap();
-                        }
+            GUILayout.Space(5);
+            SerializedProperty shadowMapProperty = serializedObject.FindProperty("ShadowMap");
+            DrawSmallObjectField(shadowMapProperty, _shadowMapContent, typeof(Cubemap));
+
+            if (shadowMapProperty.hasMultipleDifferentValues || shadowMapProperty.objectReferenceValue != null) {
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("SoftShadows"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("ShadowBias"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("ShadowBiasSmoothness"));
+                SerializedProperty useWorldSpaceProperty = serializedObject.FindProperty("UseWorldSpace");
+                EditorGUILayout.PropertyField(useWorldSpaceProperty, _useWorldSpaceContent);
+            }
+
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("RebakeShadows"));
+
+            if (GUILayout.Button(_bakeShadowsButtonContent)) {
+                propertiesChanged |= serializedObject.ApplyModifiedProperties();
+                for (int i = 0; i < targets.Length; i++) {
+                    PointLightVolume pointLightVolume = targets[i] as PointLightVolume;
+                    if (pointLightVolume != null) {
+                        pointLightVolume.BakeShadowMap();
                     }
                 }
             }
 
-            serializedObject.ApplyModifiedProperties();
+            propertiesChanged |= serializedObject.ApplyModifiedProperties();
+            if (propertiesChanged) {
+                SyncTargets();
+            }
 
+        }
+
+        // Syncs changed inspector values into runtime instances and shader globals immediately.
+        private void SyncTargets() {
+            for (int i = 0; i < targets.Length; i++) {
+                PointLightVolume pointLightVolume = targets[i] as PointLightVolume;
+                if (pointLightVolume == null) continue;
+                pointLightVolume.SyncUdonScript();
+                if (pointLightVolume.LightVolumeSetup != null) pointLightVolume.LightVolumeSetup.SyncUdonScript();
+            }
         }
 
         // Draws an object reference as a compact one-line field without Unity's large texture preview.

@@ -1997,7 +1997,7 @@ Shader "Light Volume Samples/Light Volume PBR Cutout"
 					v.tangent = v.tangent;
 
 				#if defined( ASE_IMPOSTOR )
-					// Disable "Normal Bias" because we're rendering billboard impostors and there's no vertex normals.
+					// Disable vertex offset because we're rendering billboard impostors and there's no vertex normals.
 					unity_LightShadowBias.z = 0;
 				#endif
 
