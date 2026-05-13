@@ -159,6 +159,7 @@ namespace VRCLightVolumes {
         public void SetLut(int id) {
             CustomID = id + 1;
             AngleData = Mathf.Cos(Angle);
+            UpdateRotation();
             MarkRangeDirtyAndRequestUpdate();
         }
 
@@ -168,6 +169,7 @@ namespace VRCLightVolumes {
             if(IsSpotLight()) { // If it's spotlight
                 AngleData = Mathf.Tan(Angle);
             }
+            UpdateRotation();
             MarkRangeDirtyAndRequestUpdate();
         }
 
@@ -175,12 +177,14 @@ namespace VRCLightVolumes {
         public void SetParametric() {
             CustomID = 0;
             AngleData = Mathf.Cos(Angle);
+            UpdateRotation();
             MarkRangeDirtyAndRequestUpdate();
         }
 
         // Sets light into the point light type
         public void SetPointLight() {
             PositionData.w = Mathf.Abs(PositionData.w);
+            UpdateRotation();
             MarkRangeDirtyAndRequestUpdate();
         }
 
@@ -194,6 +198,7 @@ namespace VRCLightVolumes {
                 DirectionData.w = 1 / (Mathf.Cos(Angle * (1.0f - Mathf.Clamp01(falloff))) - AngleData);
             }
             PositionData.w = - Mathf.Abs(PositionData.w);
+            UpdateRotation();
             MarkRangeDirtyAndRequestUpdate();
         }
 
@@ -206,6 +211,7 @@ namespace VRCLightVolumes {
                 AngleData = Mathf.Cos(Angle);
             }
             PositionData.w = - Mathf.Abs(PositionData.w);
+            UpdateRotation();
             MarkRangeDirtyAndRequestUpdate();
         }
         
@@ -213,6 +219,7 @@ namespace VRCLightVolumes {
         public void SetAreaLight() {
             PositionData.w = Mathf.Max(Mathf.Abs(transform.lossyScale.x), 0.001f);
             AngleData = 2 + Mathf.Max(Mathf.Abs(transform.lossyScale.y), 0.001f); // Add 2 to get out of [-1; 1] codomain of cosine
+            UpdateRotation();
             MarkRangeDirtyAndRequestUpdate();
         }
 

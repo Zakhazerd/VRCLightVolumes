@@ -101,6 +101,12 @@ namespace VRCLightVolumes {
         public int EnabledCount => _enabledCount;
         public int[] EnabledIDs => _enabledIDs;
 
+        // Restores registry arrays when serialized data or external Udon calls provide null references.
+        private void EnsureRegistryArrays() {
+            if (LightVolumeInstances == null) LightVolumeInstances = new LightVolumeInstance[0];
+            if (PointLightVolumeInstances == null) PointLightVolumeInstances = new PointLightVolumeInstance[0];
+        }
+
 #region Shader Property IDs
         // Light Volumes
         private int lightVolumeInvLocalEdgeSmoothID;
@@ -204,6 +210,17 @@ namespace VRCLightVolumes {
 
         #endregion
 
+        // Writes a fully disabled state to shader globals so stale counts do not survive after all volumes disappear.
+        private void SetDisabledShaderState() {
+            VRCShader.SetGlobalFloat(lightVolumeCountID, 0);
+            VRCShader.SetGlobalFloat(lightVolumeAdditiveCountID, 0);
+            VRCShader.SetGlobalFloat(lightVolumeOcclusionCountID, 0);
+            VRCShader.SetGlobalFloat(_pointLightCountID, 0);
+            VRCShader.SetGlobalFloat(_pointLightCubeCountID, 0);
+            VRCShader.SetGlobalFloat(_pointLightDepthShadowCountID, 0);
+            VRCShader.SetGlobalFloat(lightVolumeEnabledID, 0);
+        }
+
         private bool _old_AutoUpdateVolumes = false;
 
 #if UDONSHARP
@@ -236,7 +253,7 @@ namespace VRCLightVolumes {
                 _updateCoroutine = null;
             }
 #endif
-            VRCShader.SetGlobalFloat(lightVolumeEnabledID, 0);
+            SetDisabledShaderState();
         }
 
         private void OnEnable() {
@@ -251,6 +268,8 @@ namespace VRCLightVolumes {
 
         // Initializes Light Volume by adding it to the light volumes array. Automatically calls in runtime on object spawn
         public void InitializeLightVolume(LightVolumeInstance lightVolume) {
+            if (lightVolume == null) return;
+            EnsureRegistryArrays();
             int count = LightVolumeInstances.Length;
             int emptyIndex = -1;
             // If this volume is already registered, keep the existing slot. Otherwise remember the first free slot.
@@ -281,6 +300,8 @@ namespace VRCLightVolumes {
 
         // Removes Light Volume references from the light volumes array without resizing it.
         public void UnregisterLightVolume(LightVolumeInstance lightVolume) {
+            if (lightVolume == null) return;
+            EnsureRegistryArrays();
             int count = LightVolumeInstances.Length;
             for (int i = 0; i < count; i++) {
                 if (LightVolumeInstances[i] == lightVolume) {
@@ -291,6 +312,8 @@ namespace VRCLightVolumes {
         }
 
         public void InitializePointLightVolume(PointLightVolumeInstance pointLightVolume) {
+            if (pointLightVolume == null) return;
+            EnsureRegistryArrays();
             int count = PointLightVolumeInstances.Length;
             int emptyIndex = -1;
             // If this light is already registered, keep the existing slot. Otherwise remember the first free slot.
@@ -321,6 +344,8 @@ namespace VRCLightVolumes {
 
         // Removes Point Light Volume references from the point light volumes array without resizing it.
         public void UnregisterPointLightVolume(PointLightVolumeInstance pointLightVolume) {
+            if (pointLightVolume == null) return;
+            EnsureRegistryArrays();
             int count = PointLightVolumeInstances.Length;
             for (int i = 0; i < count; i++) {
                 if (PointLightVolumeInstances[i] == pointLightVolume) {
@@ -375,6 +400,12 @@ namespace VRCLightVolumes {
 
         // Requests to update volumes next frame
         public void RequestUpdateVolumes() {
+#if UNITY_EDITOR && !COMPILER_UDONSHARP
+            if (!Application.isPlaying) {
+                UpdateVolumes();
+                return;
+            }
+#endif
 #if UDONSHARP
             if (_isUpdateRequested) return; // Prevent multiple requests
             _isUpdateRequested = true;
@@ -411,9 +442,11 @@ namespace VRCLightVolumes {
             TryInitialize();
 
             if (!enabled || !gameObject.activeInHierarchy) {
-                VRCShader.SetGlobalFloat(lightVolumeEnabledID, 0);
+                SetDisabledShaderState();
                 return;
             }
+
+            EnsureRegistryArrays();
 
             // Recalculate all lights ranges if LightsBrightnessCutoff changed
             if (_prevLightsBrightnessCutoff != LightsBrightnessCutoff) {
@@ -589,7 +622,7 @@ namespace VRCLightVolumes {
 
             // Disabling light volumes system if no atlas or no volumes
             if ((!isAtlas || _enabledCount == 0) && _pointLightCount == 0) {
-                VRCShader.SetGlobalFloat(lightVolumeEnabledID, 0);
+                SetDisabledShaderState();
                 return;
             }
 
