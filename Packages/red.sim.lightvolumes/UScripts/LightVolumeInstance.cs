@@ -5,6 +5,7 @@ using UdonSharp;
 #endif
 
 namespace VRCLightVolumes {
+    [DisallowMultipleComponent]
 #if UDONSHARP
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class LightVolumeInstance : UdonSharpBehaviour

@@ -10,6 +10,7 @@ using VRCShader = UnityEngine.Shader;
 #endif
 
 namespace VRCLightVolumes {
+    [DisallowMultipleComponent]
 #if UDONSHARP
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class LightVolumeManager : UdonSharpBehaviour
@@ -136,7 +137,6 @@ namespace VRCLightVolumes {
         private int _lightBrightnessCutoffID;
         // Legacy support
         private int _areaLightBrightnessCutoffID;
-        private int _legacyLightVolumeOcclusionCountID;
         private int lightVolumeRotationID;
         private int lightVolumeUvwID;
         // Other
@@ -178,7 +178,6 @@ namespace VRCLightVolumes {
             _lightBrightnessCutoffID = VRCShader.PropertyToID("_UdonLightBrightnessCutoff");
             // Legacy support
             _areaLightBrightnessCutoffID = VRCShader.PropertyToID("_UdonAreaLightBrightnessCutoff");
-            _legacyLightVolumeOcclusionCountID = VRCShader.PropertyToID("_UdonLightVolumeOcclusionCount");
             lightVolumeRotationID = VRCShader.PropertyToID("_UdonLightVolumeRotation");
             lightVolumeUvwID = VRCShader.PropertyToID("_UdonLightVolumeUvw");
             // Other
@@ -213,7 +212,6 @@ namespace VRCLightVolumes {
         private void SetDisabledShaderState() {
             VRCShader.SetGlobalFloat(lightVolumeCountID, 0);
             VRCShader.SetGlobalFloat(lightVolumeAdditiveCountID, 0);
-            VRCShader.SetGlobalFloat(_legacyLightVolumeOcclusionCountID, 0);
             VRCShader.SetGlobalFloat(_pointLightCountID, 0);
             VRCShader.SetGlobalFloat(_pointLightCubeCountID, 0);
             VRCShader.SetGlobalFloat(_pointLightShadowCountID, 0);
@@ -636,7 +634,6 @@ namespace VRCLightVolumes {
             // Regular Light Volumes
             VRCShader.SetGlobalFloat(lightVolumeCountID, _enabledCount);
             VRCShader.SetGlobalFloat(lightVolumeAdditiveCountID, _additiveCount);
-            VRCShader.SetGlobalFloat(_legacyLightVolumeOcclusionCountID, 0);
             
             // Defines if Light Probes Blending enabled in scene
             VRCShader.SetGlobalFloat(lightVolumeProbesBlendID, LightProbesBlending ? 1 : 0);

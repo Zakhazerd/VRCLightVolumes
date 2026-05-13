@@ -7,6 +7,7 @@ using VRC.Udon;
 #endif
 
 namespace VRCLightVolumes {
+    [DisallowMultipleComponent]
 #if UDONSHARP
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class PointLightVolumeInstance : UdonSharpBehaviour
