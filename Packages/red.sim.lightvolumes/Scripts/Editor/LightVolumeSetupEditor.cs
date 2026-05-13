@@ -249,26 +249,6 @@ namespace VRCLightVolumes {
                 GUILayout.Space(10);
             }
 
-            
-            /*
-            // Pi Code here, need to merge it manually later
-            ulong vCount = 0;
-            if (_lightVolumeSetup.LightVolumeManager != null && _lightVolumeSetup.LightVolumeManager.LightVolumeAtlasBase != null) {
-                var tex = _lightVolumeSetup.LightVolumeManager.LightVolumeAtlasBase;
-                vCount = (ulong)tex.width * (ulong)tex.height * (ulong)tex.depth;
-
-                if (_lightVolumeSetup.AtlasPostProcessors != null) {
-                    foreach (var pp in _lightVolumeSetup.AtlasPostProcessors) {
-                        if (pp.RT != null) {
-                            vCount += (ulong)pp.RT.width * (ulong)pp.RT.height * (ulong)pp.RT.volumeDepth;
-                        }
-                    }
-                }
-            }
-
-            GUILayout.Label($"Atlas size in VRAM: {SizeInVRAM(vCount)} MB");
-            GUILayout.Label($"Atlas size in bundle: {SizeInBundle(vCount)} MB (Approximately)");
-            */
             ulong dataBytes = GetLightVolumeDataBytes();
             GUILayout.Label($"Data size in VRAM: {SizeInVRAM(dataBytes)} MB");
             GUILayout.Label($"Data size in bundle: {SizeInBundle(dataBytes)} MB (Approximately)");
@@ -366,9 +346,9 @@ namespace VRCLightVolumes {
 
             bytes += GetTextureBytes(manager.LightVolumeAtlasBase, 8);
 
-            if (manager.AtlasPostProcessors != null) {
-                foreach (var crt in manager.AtlasPostProcessors) {
-                    bytes += GetTextureBytes(crt, 8);
+            if (_lightVolumeSetup.AtlasPostProcessors != null) {
+                for (int i = 0; i < _lightVolumeSetup.AtlasPostProcessors.Length; i++) {
+                    bytes += GetTextureBytes(_lightVolumeSetup.AtlasPostProcessors[i].RT, 8);
                 }
             }
 
@@ -389,6 +369,8 @@ namespace VRCLightVolumes {
                 depth = textureArray.depth;
             } else if (texture is CustomRenderTexture customRenderTexture) {
                 depth = customRenderTexture.volumeDepth;
+            } else if (texture is RenderTexture renderTexture) {
+                depth = renderTexture.volumeDepth;
             } else if (texture is Cubemap) {
                 depth = 6;
             }
