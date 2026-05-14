@@ -195,8 +195,8 @@ float LV_EvaluateSH(float L0, float3 L1, float3 n) {
 // Samples a cubemap from _UdonPointLightVolumeTexture array
 float4 LV_SampleCubemapArray(uint id, float3 dir) {
     float3 absDir = abs(dir);
-    float2 uv = 0.0f;
-    uint face = 0;
+    float2 uv;
+    uint face;
     if (absDir.x >= absDir.y && absDir.x >= absDir.z) {
         face = dir.x > 0 ? 0 : 1;
         uv = float2((dir.x > 0 ? -dir.z : dir.z), -dir.y) * rcp(absDir.x);
@@ -213,8 +213,6 @@ float4 LV_SampleCubemapArray(uint id, float3 dir) {
 
 // Projects a cubemap direction into face index and face UV.
 void LV_CubemapFaceUv(float3 dir, out uint face, out float2 uv) {
-    face = 0;
-    uv = 0.0f;
     float3 absDir = abs(dir);
     if (absDir.x >= absDir.y && absDir.x >= absDir.z) {
         face = dir.x > 0 ? 0 : 1;
@@ -232,7 +230,7 @@ void LV_CubemapFaceUv(float3 dir, out uint face, out float2 uv) {
 // Reconstructs the direction represented by a cubemap face and face UV.
 float3 LV_CubemapDirection(uint face, float2 uv) {
     float2 cubeUv = uv * 2.0f - 1.0f;
-    float3 dir = float3(1.0f, -cubeUv.y, -cubeUv.x);
+    float3 dir;
     if (face == 0) dir = float3( 1.0f, -cubeUv.y, -cubeUv.x);
     else if (face == 1) dir = float3(-1.0f, -cubeUv.y,  cubeUv.x);
     else if (face == 2) dir = float3( cubeUv.x,  1.0f,  cubeUv.y);
@@ -249,27 +247,23 @@ float4 LV_SampleShadowMapArrayFace(uint id, uint face, float2 uv) {
 }
 
 // Compares a depth value with a receiver distance.
-void LV_PointLightShadowCompareDepth(float shadowDistance, float distanceToLight, float bias, float biasSmoothness, out float shadow) {
+float LV_PointLightShadowCompareDepth(float shadowDistance, float distanceToLight, float bias, float biasSmoothness) {
     float threshold = shadowDistance + bias;
-    shadow = 0.0f;
     [branch] if (biasSmoothness <= 0.0001f) {
-        shadow = step(distanceToLight, threshold);
-        return;
+        return step(distanceToLight, threshold);
     } else {
         float smoothing = max(biasSmoothness, 0.0001f);
         float smoothShadow = saturate((threshold + smoothing - distanceToLight) * rcp(smoothing * 2.0f));
-        shadow = LV_Smoothstep01(smoothShadow);
+        return LV_Smoothstep01(smoothShadow);
     }
 }
 
 // Compares squared reprojected depth with a receiver distance without resolving sqrt per PCF tap.
-void LV_PointLightShadowCompareDepthSq(float shadowDistanceSq, float distanceToLight, float bias, float biasSmoothness, out float shadow) {
+float LV_PointLightShadowCompareDepthSq(float shadowDistanceSq, float distanceToLight, float bias, float biasSmoothness) {
     float receiverDistance = max(distanceToLight - bias, 0.0f);
     float receiverDistanceSq = receiverDistance * receiverDistance;
-    shadow = 0.0f;
     [branch] if (biasSmoothness <= 0.0001f) {
-        shadow = step(receiverDistanceSq, shadowDistanceSq);
-        return;
+        return step(receiverDistanceSq, shadowDistanceSq);
     } else {
         float smoothing = max(biasSmoothness, 0.0001f);
         float nearDistance = max(receiverDistance - smoothing, 0.0f);
@@ -277,35 +271,19 @@ void LV_PointLightShadowCompareDepthSq(float shadowDistanceSq, float distanceToL
         float nearDistanceSq = nearDistance * nearDistance;
         float farDistanceSq = farDistance * farDistance;
         float smoothShadow = saturate((shadowDistanceSq - nearDistanceSq) * rcp(max(farDistanceSq - nearDistanceSq, 0.000001f)));
-        shadow = LV_Smoothstep01(smoothShadow);
+        return LV_Smoothstep01(smoothShadow);
     }
-}
-
-// Compares a shadow map face sample with a receiver distance.
-float LV_PointLightShadowCompare(uint shadowId, uint face, float2 uv, float distanceToLight, float bias, float biasSmoothness) {
-    float shadow = 0.0f;
-    LV_PointLightShadowCompareDepth(LV_SampleShadowMapArrayFace(shadowId, face, uv).r, distanceToLight, bias, biasSmoothness, shadow);
-    return shadow;
-}
-
-// Calculates reprojected baked depth as squared distance from current light position.
-float LV_PointLightShadowReprojectedDistanceSq(float shadowDistanceFromBake, float bakeToLightSq, float bakeToLightDotDir2) {
-    return max(shadowDistanceFromBake * (shadowDistanceFromBake + bakeToLightDotDir2) + bakeToLightSq, 0.0f);
 }
 
 // Compares a reprojected shadow map face sample with a receiver distance and known sample direction.
 float LV_PointLightShadowCompareReprojectedDir(uint shadowId, uint face, float2 uv, float3 sampleDir, float3 lightPos, float3 bakePos, float distanceToLight, float bias, float biasSmoothness) {
     float shadowDistanceFromBake = LV_SampleShadowMapArrayFace(shadowId, face, uv).r;
     float3 bakeToLight = lightPos - bakePos;
-    float shadowDistanceSq = LV_PointLightShadowReprojectedDistanceSq(shadowDistanceFromBake, dot(bakeToLight, bakeToLight), dot(bakeToLight, sampleDir) * 2.0f);
-    float shadow = 0.0f;
-    LV_PointLightShadowCompareDepthSq(shadowDistanceSq, distanceToLight, bias, biasSmoothness, shadow);
-    return shadow;
-}
-
-// Compares a reprojected shadow map face sample with a receiver distance.
-float LV_PointLightShadowCompareReprojected(uint shadowId, uint face, float2 uv, float3 lightPos, float3 bakePos, float distanceToLight, float bias, float biasSmoothness) {
-    return LV_PointLightShadowCompareReprojectedDir(shadowId, face, uv, LV_CubemapDirection(face, uv), lightPos, bakePos, distanceToLight, bias, biasSmoothness);
+    // Reproject baked depth as squared distance from current light position.
+    float bakeToLightSq = dot(bakeToLight, bakeToLight);
+    float bakeToLightDotDir2 = dot(bakeToLight, sampleDir) * 2.0f;
+    float shadowDistanceSq = max(shadowDistanceFromBake * (shadowDistanceFromBake + bakeToLightDotDir2) + bakeToLightSq, 0.0f);
+    return LV_PointLightShadowCompareDepthSq(shadowDistanceSq, distanceToLight, bias, biasSmoothness);
 }
 
 // Resolves four depth samples and bilinear factors for the software PCF path.
@@ -322,18 +300,15 @@ void LV_PointLightShadowBilinearSamples(uint shadowId, uint face, float2 uv, out
     float2 uv01 = (min(max(texelBase + float2(0.0f, 1.0f), 0.0f), texelMax) + 0.5f) * invResolution;
     float2 uv11 = (min(max(texelBase + float2(1.0f, 1.0f), 0.0f), texelMax) + 0.5f) * invResolution;
 
-    shadowDepths = float4(
-        LV_SampleShadowMapArrayFace(shadowId, face, uv00).r,
-        LV_SampleShadowMapArrayFace(shadowId, face, uv10).r,
-        LV_SampleShadowMapArrayFace(shadowId, face, uv01).r,
-        LV_SampleShadowMapArrayFace(shadowId, face, uv11).r
-    );
+    shadowDepths = float4(LV_SampleShadowMapArrayFace(shadowId, face, uv00).r, LV_SampleShadowMapArrayFace(shadowId, face, uv10).r, LV_SampleShadowMapArrayFace(shadowId, face, uv01).r, LV_SampleShadowMapArrayFace(shadowId, face, uv11).r);
 }
 
+// Blends four already-compared shadow samples using bilinear texel weights.
 float LV_PointLightShadowBilinearBlend(float4 shadows, float2 texelFrac) {
     return lerp(lerp(shadows.x, shadows.y, texelFrac.x), lerp(shadows.z, shadows.w, texelFrac.x), texelFrac.y);
 }
 
+// Compares four depth values with a receiver distance for the bilinear PCF path.
 float4 LV_PointLightShadowCompareDepths(float4 shadowDepths, float distanceToLight, float bias, float biasSmoothness) {
     float receiverDistance = distanceToLight - bias;
     [branch] if (biasSmoothness <= 0.0001f) {
@@ -345,6 +320,7 @@ float4 LV_PointLightShadowCompareDepths(float4 shadowDepths, float distanceToLig
     return smoothShadow * smoothShadow * (3.0f - 2.0f * smoothShadow);
 }
 
+// Compares four squared reprojected depths with a receiver distance for the bilinear PCF path.
 float4 LV_PointLightShadowCompareDepthsSq(float4 shadowDistanceSq, float distanceToLight, float bias, float biasSmoothness) {
     float receiverDistance = max(distanceToLight - bias, 0.0f);
     float receiverDistanceSq = receiverDistance * receiverDistance;
@@ -395,6 +371,7 @@ void LV_PointLightShadow(uint id, float3 shadowData, float3 lightPos, float3 wor
     uint shadowId = (uint)shadowIndex;
     float encodedBias = shadowData.y;
     bool softShadows = encodedBias < 0.0f;
+    
     // Soft shadows add a tiny encoding offset so zero-bias soft shadows can stay representable.
     float bias = softShadows ? max(-encodedBias - 0.000001f, 0.0f) : max(encodedBias, 0.0f);
     float biasSmoothness = max(shadowData.z, 0.0f);
@@ -405,8 +382,12 @@ void LV_PointLightShadow(uint id, float3 shadowData, float3 lightPos, float3 wor
         uint followFace = 0;
         float2 followUv = 0.0f;
         LV_CubemapFaceUv(shadowDir, followFace, followUv);
-        [branch] if (softShadows) shadow = LV_PointLightShadowCompareBilinear(shadowId, followFace, followUv, distanceToLight, bias, biasSmoothness);
-        else shadow = LV_PointLightShadowCompare(shadowId, followFace, followUv, distanceToLight, bias, biasSmoothness);
+        [branch] if (softShadows) {
+            shadow = LV_PointLightShadowCompareBilinear(shadowId, followFace, followUv, distanceToLight, bias, biasSmoothness);
+        } else { // Hard shadow path: sample the selected face and compare stored depth with receiver distance.
+            float shadowDistance = LV_SampleShadowMapArrayFace(shadowId, followFace, followUv).r;
+            shadow = LV_PointLightShadowCompareDepth(shadowDistance, distanceToLight, bias, biasSmoothness);
+        }
         return;
     }
 
@@ -419,26 +400,31 @@ void LV_PointLightShadow(uint id, float3 shadowData, float3 lightPos, float3 wor
             float2 reprojectionUv = 0.0f;
             float3 bakeDirN = bakeDir * rsqrt(bakeSqLen);
             LV_CubemapFaceUv(bakeDirN, reprojectionFace, reprojectionUv);
-            [branch] if (softShadows) shadow = LV_PointLightShadowCompareBilinearReprojected(shadowId, reprojectionFace, reprojectionUv, bakeDirN, lightPos, reprojectionData.xyz, distanceToLight, bias, biasSmoothness);
-            else shadow = LV_PointLightShadowCompareReprojectedDir(shadowId, reprojectionFace, reprojectionUv, bakeDirN, lightPos, reprojectionData.xyz, distanceToLight, bias, biasSmoothness);
+            [branch] if (softShadows) {
+                shadow = LV_PointLightShadowCompareBilinearReprojected(shadowId, reprojectionFace, reprojectionUv, bakeDirN, lightPos, reprojectionData.xyz, distanceToLight, bias, biasSmoothness);
+            } else {
+                shadow = LV_PointLightShadowCompareReprojectedDir(shadowId, reprojectionFace, reprojectionUv, bakeDirN, lightPos, reprojectionData.xyz, distanceToLight, bias, biasSmoothness);
+            }
             return;
         }
     }
 
-    uint face = 0;
-    float2 uv = 0.0f;
+    uint face;
+    float2 uv;
     LV_CubemapFaceUv(dirN, face, uv);
-    [branch] if (softShadows) shadow = LV_PointLightShadowCompareBilinear(shadowId, face, uv, distanceToLight, bias, biasSmoothness);
-    else shadow = LV_PointLightShadowCompare(shadowId, face, uv, distanceToLight, bias, biasSmoothness);
+    [branch] if (softShadows) {
+        shadow = LV_PointLightShadowCompareBilinear(shadowId, face, uv, distanceToLight, bias, biasSmoothness);
+    } else { // Hard shadow path: sample the current cubemap face and compare stored depth with receiver distance.
+        float shadowDistance = LV_SampleShadowMapArrayFace(shadowId, face, uv).r;
+        shadow = LV_PointLightShadowCompareDepth(shadowDistance, distanceToLight, bias, biasSmoothness);
+    }
 }
 
 // Returns per-light shadow attenuation after the overdraw slot has already been reserved.
 float LV_PointLightShadowAttenuation(uint id, float4 lightPositionData, float3 worldPos, float3 dirN, float sqDistanceToLight, float invDistanceToLight) {
     [branch] if (_UdonPointLightVolumeShadowCount <= 0.0f) return 1.0f;
-
     float3 shadowData = _UdonPointLightVolumeShadowData[id];
     [branch] if (shadowData.x == 0.0f) return 1.0f;
-
     float shadow = 1.0f;
     LV_PointLightShadow(id, shadowData, lightPositionData.xyz, worldPos, dirN, sqDistanceToLight * invDistanceToLight, shadow);
     return shadow;
@@ -517,31 +503,24 @@ float LV_PointLightSolidAngle(float sqdist, float sqlightSize) {
 
 // Calculates a spherical light source
 void LV_SphereLight(float sqdist, float3 dirN, float sqlightSize, float3 color, float sqMaxDist, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
-    
     float3 att = LV_PointLightAttenuation(sqdist, sqlightSize, color, _UdonLightBrightnessCutoff, sqMaxDist);
-
     float3 l0 = att;
     float3 l1 = dirN * LV_PointLightSolidAngle(sqdist, sqlightSize);
-    
     L0 += l0;
     L1r += l0.r * l1;
     L1g += l0.g * l1;
     L1b += l0.b * l1;
-    
 }
 
 // Calculates a spherical spot light source
 void LV_SphereSpotLight(float sqdist, float3 dirN, float sqlightSize, float3 att, float spotMask, float cosAngle, float coneFalloff, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
-    
     float smoothedCone = LV_Smoothstep01(saturate(spotMask * coneFalloff));
     float3 l0 = att * smoothedCone;
     float3 l1 = dirN * LV_PointLightSolidAngle(sqdist, sqlightSize * saturate(1 - cosAngle));
-    
     L0 += l0;
     L1r += l0.r * l1;
     L1g += l0.g * l1;
     L1b += l0.b * l1;
-    
 }
 
 // Resolves spot cookie UV and culls fragments outside the projected cookie before expensive shadow work.
@@ -559,32 +538,26 @@ void LV_SphereSpotLightCookieUv(float3 dirN, float4 lightRot, float tanAngle, ou
 // Calculates a spherical spot light source with resolved cookie UV.
 void LV_SphereSpotLightCookie(float sqdist, float3 dirN, float sqlightSize, float3 att, float4 cookie, float tanAngle, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b) {
     float angleSize = saturate(rsqrt(1 + tanAngle * tanAngle));
-        
     float3 l0 = att * cookie.rgb * cookie.a;
     float3 l1 = dirN * LV_PointLightSolidAngle(sqdist, sqlightSize * (1 - angleSize));
-    
     L0 += l0;
     L1r += l0.r * l1;
     L1g += l0.g * l1;
     L1b += l0.b * l1;
-    
 }
 
 // Calculates a spherical spot light source
 void LV_SphereSpotLightAttenuationLUT(float sqdist, float3 dirN, float sqlightSize, float3 color, float spotMask, float cosAngle, uint customId, inout float3 L0, inout float3 L1r, inout float3 L1g, inout float3 L1b, inout uint count) {
-    
     float dirRadius = sqdist * abs(sqlightSize);
     float spot = 1 - saturate(spotMask * rcp(1 - cosAngle));
     count++;
     uint id = (uint) _UdonPointLightVolumeCubeCount * 5 + customId - 1;
     float3 uvid = float3(sqrt(float2(spot, dirRadius)), id);
     float3 att = color.rgb * LV_SAMPLE(_UdonPointLightVolumeTexture, uvid).xyz;
-    
     L0 += att;
     L1r += dirN * att.r;
     L1g += dirN * att.g;
     L1b += dirN * att.b;
-    
 }
 
 // Samples a spot light, point light or quad/area light
