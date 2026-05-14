@@ -30,10 +30,8 @@ namespace VRCLightVolumes {
         private static readonly int _previewCorrectionID = Shader.PropertyToID("_PreviewCorrection");
         private static readonly int _previewRotationID = Shader.PropertyToID("_PreviewRotation");
         private static readonly int _previewIsRotatedID = Shader.PropertyToID("_PreviewIsRotated");
-        private static readonly int _previewSortAxis0ID = Shader.PropertyToID("_PreviewSortAxis0");
-        private static readonly int _previewSortAxis1ID = Shader.PropertyToID("_PreviewSortAxis1");
-        private static readonly int _previewSortAxis2ID = Shader.PropertyToID("_PreviewSortAxis2");
-        private static readonly int _previewSortFlipID = Shader.PropertyToID("_PreviewSortFlip");
+        private static readonly int _previewShellOriginID = Shader.PropertyToID("_PreviewShellOrigin");
+        private static readonly int _previewCameraVoxelID = Shader.PropertyToID("_PreviewCameraVoxel");
         private static readonly int _previewCameraRightID = Shader.PropertyToID("_PreviewCameraRight");
         private static readonly int _previewCameraUpID = Shader.PropertyToID("_PreviewCameraUp");
         private static readonly int _previewCameraPositionID = Shader.PropertyToID("_PreviewCameraPosition");
@@ -169,7 +167,7 @@ namespace VRCLightVolumes {
             _propertyBlock.SetVector(_previewCorrectionID, data.Correction);
             _propertyBlock.SetVector(_previewRotationID, new Vector4(data.ShRotation.x, data.ShRotation.y, data.ShRotation.z, data.ShRotation.w));
             _propertyBlock.SetInt(_previewIsRotatedID, data.IsRotated ? 1 : 0);
-            SetSortData(localToWorld, data.Resolution, resolvedCamera);
+            SetShellData(localToWorld, data.Resolution, resolvedCamera);
             SetCameraData(data.Position, resolvedCamera);
 
             int instanceCount = (int)(((long)voxelCount + CardsPerInstance - 1L) / CardsPerInstance);
@@ -258,28 +256,24 @@ namespace VRCLightVolumes {
             return mesh;
         }
 
-        // Calculates sorting axes so draw order roughly follows front-to-back voxel slices.
-        private void SetSortData(Matrix4x4 localToWorld, Vector3Int resolution, Camera camera) {
-            Vector3 localCamera = Vector3.back;
+        // Calculates the voxel-space camera position used by the shader shell traversal.
+        private void SetShellData(Matrix4x4 localToWorld, Vector3Int resolution, Camera camera) {
+            Vector3 localCamera = Vector3.zero;
 
             if (camera != null) {
                 Matrix4x4 worldToLocal = localToWorld.inverse;
                 localCamera = worldToLocal.MultiplyPoint3x4(camera.transform.position);
-                if (localCamera.sqrMagnitude < 1e-8f) localCamera = -worldToLocal.MultiplyVector(camera.transform.forward);
             }
 
-            if (localCamera.sqrMagnitude < 1e-8f) localCamera = Vector3.back;
+            Vector3 cameraVoxel = LocalToVoxelCoordinate(localCamera, resolution);
+            Vector3 shellOrigin = new Vector3(
+                Mathf.Round(Mathf.Clamp(cameraVoxel.x, 0f, Mathf.Max(resolution.x - 1, 0))),
+                Mathf.Round(Mathf.Clamp(cameraVoxel.y, 0f, Mathf.Max(resolution.y - 1, 0))),
+                Mathf.Round(Mathf.Clamp(cameraVoxel.z, 0f, Mathf.Max(resolution.z - 1, 0)))
+            );
 
-            Vector3 absLocalCamera = new Vector3(Mathf.Abs(localCamera.x), Mathf.Abs(localCamera.y), Mathf.Abs(localCamera.z));
-            int axis0 = 0;
-            int axis1 = 1;
-            int axis2 = 2;
-            SortAxesAscending(absLocalCamera, ref axis0, ref axis1, ref axis2);
-
-            _propertyBlock.SetVector(_previewSortAxis0ID, GetSortAxisData(axis0, resolution));
-            _propertyBlock.SetVector(_previewSortAxis1ID, GetSortAxisData(axis1, resolution));
-            _propertyBlock.SetVector(_previewSortAxis2ID, GetSortAxisData(axis2, resolution));
-            _propertyBlock.SetVector(_previewSortFlipID, new Vector4(GetSortFlip(localCamera, axis0), GetSortFlip(localCamera, axis1), GetSortFlip(localCamera, axis2), 0f));
+            _propertyBlock.SetVector(_previewShellOriginID, new Vector4(shellOrigin.x, shellOrigin.y, shellOrigin.z, 0f));
+            _propertyBlock.SetVector(_previewCameraVoxelID, new Vector4(cameraVoxel.x, cameraVoxel.y, cameraVoxel.z, 0f));
         }
 
         // Sends explicit SceneView camera vectors because editor preview draw timing cannot rely on Unity camera globals.
@@ -300,38 +294,13 @@ namespace VRCLightVolumes {
             _propertyBlock.SetVector(_previewCameraPositionID, new Vector4(cameraPosition.x, cameraPosition.y, cameraPosition.z, 1f));
         }
 
-        // Sorts axis ids by ascending absolute view direction.
-        private static void SortAxesAscending(Vector3 values, ref int axis0, ref int axis1, ref int axis2) {
-            if (GetAxisComponent(values, axis0) > GetAxisComponent(values, axis1)) Swap(ref axis0, ref axis1);
-            if (GetAxisComponent(values, axis1) > GetAxisComponent(values, axis2)) Swap(ref axis1, ref axis2);
-            if (GetAxisComponent(values, axis0) > GetAxisComponent(values, axis1)) Swap(ref axis0, ref axis1);
-        }
-
-        // Swaps two integer values.
-        private static void Swap(ref int a, ref int b) {
-            int tmp = a;
-            a = b;
-            b = tmp;
-        }
-
-        // Builds shader data for one sorted axis.
-        private static Vector4 GetSortAxisData(int axis, Vector3Int resolution) {
-            Vector4 data = Vector4.zero;
-            data[axis] = 1f;
-            data.w = Mathf.Max(resolution[axis], 1);
-            return data;
-        }
-
-        // Returns whether the axis should be traversed from high to low coordinate.
-        private static float GetSortFlip(Vector3 localCamera, int axis) {
-            return GetAxisComponent(localCamera, axis) >= 0f ? 1f : 0f;
-        }
-
-        // Returns one component selected by axis index.
-        private static float GetAxisComponent(Vector3 value, int axis) {
-            if (axis == 0) return value.x;
-            if (axis == 1) return value.y;
-            return value.z;
+        // Converts local volume coordinates from -0.5..0.5 space into continuous voxel coordinates.
+        private static Vector3 LocalToVoxelCoordinate(Vector3 localPosition, Vector3Int resolution) {
+            return new Vector3(
+                (localPosition.x + 0.5f) * Mathf.Max(resolution.x, 1) - 0.5f,
+                (localPosition.y + 0.5f) * Mathf.Max(resolution.y, 1) - 0.5f,
+                (localPosition.z + 0.5f) * Mathf.Max(resolution.z, 1) - 0.5f
+            );
         }
 
         // Calculates a conservative impostor radius that fits inside one voxel.

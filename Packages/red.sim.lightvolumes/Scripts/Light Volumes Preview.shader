@@ -17,6 +17,8 @@ Shader "Hidden/LightVolumesPreview" {
 
             #include "UnityCG.cginc"
 
+            #define LVPREVIEW_BINARY_SEARCH_STEPS 12
+
             UNITY_DECLARE_TEX3D(_PreviewTexture0);
             UNITY_DECLARE_TEX3D(_PreviewTexture1);
             UNITY_DECLARE_TEX3D(_PreviewTexture2);
@@ -33,10 +35,8 @@ Shader "Hidden/LightVolumesPreview" {
             float4 _PreviewCorrection;
             float4 _PreviewRotation;
             int _PreviewIsRotated;
-            float4 _PreviewSortAxis0;
-            float4 _PreviewSortAxis1;
-            float4 _PreviewSortAxis2;
-            float4 _PreviewSortFlip;
+            float4 _PreviewShellOrigin;
+            float4 _PreviewCameraVoxel;
             float4 _PreviewCameraRight;
             float4 _PreviewCameraUp;
             float4 _PreviewCameraPosition;
@@ -67,27 +67,165 @@ Shader "Hidden/LightVolumesPreview" {
                 #endif
             }
 
-            // Traverses one axis from high to low coordinate when requested.
-            uint ApplySortFlip(uint coord, uint dim, float flip) {
-                return flip > 0.5 ? dim - 1u - coord : coord;
+            // Returns one float component by dynamic axis index.
+            float AxisValue(float3 value, uint axis) {
+                if (axis == 0u) return value.x;
+                if (axis == 1u) return value.y;
+                return value.z;
             }
 
-            // Converts a front-to-back card id into a volume voxel coordinate.
+            // Returns one integer component by dynamic axis index.
+            int AxisValueInt(int3 value, uint axis) {
+                if (axis == 0u) return value.x;
+                if (axis == 1u) return value.y;
+                return value.z;
+            }
+
+            // Writes one integer component by dynamic axis index.
+            void SetAxisValue(inout int3 value, uint axis, int axisValue) {
+                if (axis == 0u) value.x = axisValue;
+                else if (axis == 1u) value.y = axisValue;
+                else value.z = axisValue;
+            }
+
+            // Swaps two axis ids.
+            void SwapAxes(inout uint a, inout uint b) {
+                uint tmp = a;
+                a = b;
+                b = tmp;
+            }
+
+            // Sorts axes from largest absolute camera offset to smallest.
+            void SortAxesDescending(float3 values, out uint axis0, out uint axis1, out uint axis2) {
+                axis0 = 0u;
+                axis1 = 1u;
+                axis2 = 2u;
+
+                if (AxisValue(values, axis0) < AxisValue(values, axis1)) SwapAxes(axis0, axis1);
+                if (AxisValue(values, axis1) < AxisValue(values, axis2)) SwapAxes(axis1, axis2);
+                if (AxisValue(values, axis0) < AxisValue(values, axis1)) SwapAxes(axis0, axis1);
+            }
+
+            // Counts an inclusive integer range, returning zero for empty ranges.
+            uint RangeCount(int rangeMin, int rangeMax) {
+                return (uint)max(rangeMax - rangeMin + 1, 0);
+            }
+
+            // Returns the clipped minimum coordinate of one Chebyshev shell axis.
+            int ShellMin(int3 origin, int3 boundsMin, uint axis, int radius) {
+                return max(AxisValueInt(origin, axis) - radius, AxisValueInt(boundsMin, axis));
+            }
+
+            // Returns the clipped maximum coordinate of one Chebyshev shell axis.
+            int ShellMax(int3 origin, int3 boundsMax, uint axis, int radius) {
+                return min(AxisValueInt(origin, axis) + radius, AxisValueInt(boundsMax, axis));
+            }
+
+            // Counts all voxels inside a clipped Chebyshev radius around the shell origin.
+            uint ShellVolumeCount(int3 origin, int3 boundsMin, int3 boundsMax, int radius) {
+                if (radius < 0) return 0u;
+
+                uint xCount = RangeCount(ShellMin(origin, boundsMin, 0u, radius), ShellMax(origin, boundsMax, 0u, radius));
+                uint yCount = RangeCount(ShellMin(origin, boundsMin, 1u, radius), ShellMax(origin, boundsMax, 1u, radius));
+                uint zCount = RangeCount(ShellMin(origin, boundsMin, 2u, radius), ShellMax(origin, boundsMax, 2u, radius));
+                return xCount * yCount * zCount;
+            }
+
+            // Returns the farthest complete shell radius needed to cover the clipped bounds.
+            int MaxShellRadius(int3 origin, int3 boundsMin, int3 boundsMax) {
+                int3 farCorner = max(origin - boundsMin, boundsMax - origin);
+                return max(farCorner.x, max(farCorner.y, farCorner.z));
+            }
+
+            // Finds the shell radius containing the requested compact voxel index.
+            int FindShellRadius(uint cardId, int3 origin, int3 boundsMin, int3 boundsMax) {
+                int low = 0;
+                int high = MaxShellRadius(origin, boundsMin, boundsMax);
+
+                [unroll] for (int i = 0; i < LVPREVIEW_BINARY_SEARCH_STEPS; i++) {
+                    int mid = (low + high) >> 1;
+                    if (cardId < ShellVolumeCount(origin, boundsMin, boundsMax, mid)) high = mid;
+                    else low = mid + 1;
+                }
+
+                return low;
+            }
+
+            // Counts one face of a clipped Chebyshev shell.
+            uint ShellFaceCount(uint fixedAxis, int fixedCoord, int3 boundsMin, int3 boundsMax, int range0Min, int range0Max, int range1Min, int range1Max) {
+                if (fixedCoord < AxisValueInt(boundsMin, fixedAxis) || fixedCoord > AxisValueInt(boundsMax, fixedAxis)) return 0u;
+                return RangeCount(range0Min, range0Max) * RangeCount(range1Min, range1Max);
+            }
+
+            // Returns a shell face coordinate, choosing the camera-facing face before the opposite face.
+            int ShellFaceCoord(int3 origin, uint axis, int radius, float3 cameraDelta, bool nearFace) {
+                int signToCamera = AxisValue(cameraDelta, axis) >= 0.0 ? 1 : -1;
+                int direction = nearFace ? signToCamera : -signToCamera;
+                return AxisValueInt(origin, axis) + direction * radius;
+            }
+
+            // Decodes a 2D face-local index into a 3D voxel coordinate.
+            int3 BuildShellFaceCoord(uint fixedAxis, int fixedCoord, uint rangeAxis0, int range0Min, int range0Max, uint rangeAxis1, int range1Min, uint faceIndex) {
+                uint range0Count = max(RangeCount(range0Min, range0Max), 1u);
+                uint range1Offset = faceIndex / range0Count;
+                uint range0Offset = faceIndex - range1Offset * range0Count;
+                int3 coord = int3(0, 0, 0);
+                SetAxisValue(coord, fixedAxis, fixedCoord);
+                SetAxisValue(coord, rangeAxis0, range0Min + (int)range0Offset);
+                SetAxisValue(coord, rangeAxis1, range1Min + (int)range1Offset);
+                return coord;
+            }
+
+            // Tries to consume one shell face from the compact shell index.
+            bool TryTakeShellFace(inout uint shellIndex, out int3 coord, uint fixedAxis, int fixedCoord, uint rangeAxis0, int range0Min, int range0Max, uint rangeAxis1, int range1Min, int range1Max, int3 boundsMin, int3 boundsMax) {
+                uint faceCount = ShellFaceCount(fixedAxis, fixedCoord, boundsMin, boundsMax, range0Min, range0Max, range1Min, range1Max);
+                if (shellIndex >= faceCount) {
+                    shellIndex -= faceCount;
+                    coord = int3(0, 0, 0);
+                    return false;
+                }
+
+                coord = BuildShellFaceCoord(fixedAxis, fixedCoord, rangeAxis0, range0Min, range0Max, rangeAxis1, range1Min, shellIndex);
+                return true;
+            }
+
+            // Converts a compact card id into a near-to-far voxel coordinate by expanding whole shells from the camera.
             float3 DecodeVoxelCoord(uint cardId) {
-                uint dim0 = (uint)max(_PreviewSortAxis0.w, 1.0);
-                uint dim1 = (uint)max(_PreviewSortAxis1.w, 1.0);
-                uint dim2 = (uint)max(_PreviewSortAxis2.w, 1.0);
+                int3 resolution = max((int3)round(_PreviewResolution.xyz), int3(1, 1, 1));
+                int3 boundsMin = int3(0, 0, 0);
+                int3 boundsMax = resolution - int3(1, 1, 1);
+                int3 origin = (int3)round(clamp(_PreviewShellOrigin.xyz, (float3)boundsMin, (float3)boundsMax));
 
-                uint coord0 = cardId % dim0;
-                uint rest = cardId / dim0;
-                uint coord1 = rest % dim1;
-                uint coord2 = min(rest / dim1, dim2 - 1u);
+                int radius = FindShellRadius(cardId, origin, boundsMin, boundsMax);
+                if (radius <= 0) return (float3)origin;
 
-                coord0 = ApplySortFlip(coord0, dim0, _PreviewSortFlip.x);
-                coord1 = ApplySortFlip(coord1, dim1, _PreviewSortFlip.y);
-                coord2 = ApplySortFlip(coord2, dim2, _PreviewSortFlip.z);
+                uint shellIndex = cardId - ShellVolumeCount(origin, boundsMin, boundsMax, radius - 1);
+                float3 cameraDelta = _PreviewCameraVoxel.xyz - (float3)origin;
 
-                return _PreviewSortAxis0.xyz * (float)coord0 + _PreviewSortAxis1.xyz * (float)coord1 + _PreviewSortAxis2.xyz * (float)coord2;
+                uint axis0;
+                uint axis1;
+                uint axis2;
+                SortAxesDescending(abs(cameraDelta), axis0, axis1, axis2);
+
+                int axis0Min = ShellMin(origin, boundsMin, axis0, radius);
+                int axis0Max = ShellMax(origin, boundsMax, axis0, radius);
+                int axis1Min = ShellMin(origin, boundsMin, axis1, radius);
+                int axis1Max = ShellMax(origin, boundsMax, axis1, radius);
+                int axis2Min = ShellMin(origin, boundsMin, axis2, radius);
+                int axis2Max = ShellMax(origin, boundsMax, axis2, radius);
+                int axis0InnerMin = ShellMin(origin, boundsMin, axis0, radius - 1);
+                int axis0InnerMax = ShellMax(origin, boundsMax, axis0, radius - 1);
+                int axis1InnerMin = ShellMin(origin, boundsMin, axis1, radius - 1);
+                int axis1InnerMax = ShellMax(origin, boundsMax, axis1, radius - 1);
+
+                int3 coord;
+                if (TryTakeShellFace(shellIndex, coord, axis0, ShellFaceCoord(origin, axis0, radius, cameraDelta, true), axis1, axis1Min, axis1Max, axis2, axis2Min, axis2Max, boundsMin, boundsMax)) return (float3)coord;
+                if (TryTakeShellFace(shellIndex, coord, axis0, ShellFaceCoord(origin, axis0, radius, cameraDelta, false), axis1, axis1Min, axis1Max, axis2, axis2Min, axis2Max, boundsMin, boundsMax)) return (float3)coord;
+                if (TryTakeShellFace(shellIndex, coord, axis1, ShellFaceCoord(origin, axis1, radius, cameraDelta, true), axis0, axis0InnerMin, axis0InnerMax, axis2, axis2Min, axis2Max, boundsMin, boundsMax)) return (float3)coord;
+                if (TryTakeShellFace(shellIndex, coord, axis1, ShellFaceCoord(origin, axis1, radius, cameraDelta, false), axis0, axis0InnerMin, axis0InnerMax, axis2, axis2Min, axis2Max, boundsMin, boundsMax)) return (float3)coord;
+                if (TryTakeShellFace(shellIndex, coord, axis2, ShellFaceCoord(origin, axis2, radius, cameraDelta, true), axis0, axis0InnerMin, axis0InnerMax, axis1, axis1InnerMin, axis1InnerMax, boundsMin, boundsMax)) return (float3)coord;
+                if (TryTakeShellFace(shellIndex, coord, axis2, ShellFaceCoord(origin, axis2, radius, cameraDelta, false), axis0, axis0InnerMin, axis0InnerMax, axis1, axis1InnerMin, axis1InnerMax, boundsMin, boundsMax)) return (float3)coord;
+                return (float3)origin;
             }
 
             // Rotates a vector by a quaternion.
