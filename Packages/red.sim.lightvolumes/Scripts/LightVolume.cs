@@ -1,7 +1,7 @@
 using UnityEngine;
 using Unity.Collections;
-using UnityEngine.Rendering;
 using UnityEditor;
+using UnityEngine.Rendering;
 
 #if UDONSHARP
 using VRC.Udon;
@@ -54,7 +54,6 @@ namespace VRCLightVolumes {
         [Tooltip("Manual Light Volume resolution in voxel count.")]
         public Vector3Int Resolution = new Vector3Int(16, 16, 16);
 
-        public bool PreviewVoxels;
 #if BAKERY_INCLUDED
         public BakeryVolume BakeryVolume;
 #endif
@@ -78,21 +77,8 @@ namespace VRCLightVolumes {
         private float _prevHighlights = 0;
         private float _lastTimeColorCorrection = 0; // Last time color correction values changed
 
-        // Preview
-        private Material _previewMaterial;
-        private Mesh _previewMesh;
-        private ComputeBuffer _posBuf;
-        private ComputeBuffer _argsBuf;
-        static readonly int _previewPosID = Shader.PropertyToID("_Positions");
-        static readonly int _previewScaleID = Shader.PropertyToID("_Scale");
-
         // Was it changed on Validate?
         private bool _isValidated = false;
-
-        // Needs to be resetted after unselecting the object to prevent unity stall
-        public void ResetProbesPositions() {
-            _probesPositions = new Vector3[0];
-        }
 
         // Auto-initialize with a reflection probe bounds
         public void Reset() {
@@ -206,12 +192,10 @@ namespace VRCLightVolumes {
             Resolution = new Vector3Int(x, y, z);
         }
 
-        // Recalculates adaptive resolution and local positions if required
+        // Recalculates adaptive resolution if required
         public void Recalculate() {
             if (AdaptiveResolution)
                 RecalculateAdaptiveResolution();
-            if (PreviewVoxels && Bake)
-                RecalculateProbesPositions();
         }
 #if UNITY_EDITOR
         // Saves additional probes data baked with Progressive Lightmapper
@@ -495,7 +479,6 @@ namespace VRCLightVolumes {
             if (_prevPos != transform.position || _prevRot != transform.rotation || _prevScl != transform.localScale) {
                 SetupBakeryDependencies();
                 Recalculate();
-                if (PreviewVoxels) ReleasePreviewBuffers();
                 _prevPos = transform.position;
                 _prevRot = transform.rotation;
                 _prevScl = transform.localScale;
@@ -520,54 +503,6 @@ namespace VRCLightVolumes {
                 LightVolumeSetup.GenerateAtlas();
             }
 
-            // If voxels preview disabled
-            if (!PreviewVoxels || _probesPositions.Length == 0 || Selection.activeGameObject != gameObject) return;
-
-            Vector3[] pPositions; // Draw only 1000 000 first probes!
-            if(_probesPositions.Length > 1000000) {
-                pPositions = new Vector3[1000000];
-                System.Array.Copy(_probesPositions, pPositions, 1000000);
-            } else {
-                pPositions = _probesPositions;
-            }
-
-            // Initialize Buffers
-            if (_posBuf == null || _posBuf.count != pPositions.Length) {
-                ReleasePreviewBuffers();
-                _posBuf = new ComputeBuffer(pPositions.Length, sizeof(float) * 3);
-                _argsBuf = new ComputeBuffer(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
-            }
-
-            // Generate Sphere mesh
-            if (_previewMesh == null) {
-                _previewMesh = LVUtils.GenerateIcoSphere(0.5f, 0);
-            }
-
-            // Create Material
-            if (_previewMaterial == null) {
-                _previewMaterial = new Material(Shader.Find("Hidden/LightVolumesPreview"));
-            }
-
-            // Calculating radius
-            Vector3 scale = GetScale();
-            Vector3 res = Resolution;
-            float radius = Mathf.Min(scale.z / res.z, Mathf.Min(scale.x / res.x, scale.y / res.y)) / 3;
-
-            // Setting data to buffers
-            _posBuf.SetData(pPositions);
-            _previewMaterial.SetBuffer(_previewPosID, _posBuf);
-            _previewMaterial.SetFloat(_previewScaleID, radius);
-            _argsBuf.SetData(new uint[] { _previewMesh.GetIndexCount(0), (uint)pPositions.Length, _previewMesh.GetIndexStart(0), (uint)_previewMesh.GetBaseVertex(0), 0 });
-
-            Bounds bounds = LVUtils.BoundsFromTRS(GetMatrixTRS());
-            Graphics.DrawMeshInstancedIndirect(_previewMesh, 0, _previewMaterial, bounds, _argsBuf, 0, null, ShadowCastingMode.Off, false, gameObject.layer);
-
-        }
-
-        // Releases compute buffer
-        void ReleasePreviewBuffers() {
-            if (_posBuf != null) { _posBuf.Release(); _posBuf = null; }
-            if (_argsBuf != null) { _argsBuf.Release(); _argsBuf = null; }
         }
 
         private void Awake() {
@@ -593,8 +528,6 @@ namespace VRCLightVolumes {
                 LightVolumeSetup.RefreshVolumesList();
                 LightVolumeSetup.SyncUdonScript();
             }
-            if (PreviewVoxels)
-                ReleasePreviewBuffers();
         }
 
         private void OnDestroy() {
@@ -602,8 +535,6 @@ namespace VRCLightVolumes {
                 LightVolumeSetup.RefreshVolumesList();
                 LightVolumeSetup.SyncUdonScript();
             }
-            if (PreviewVoxels)
-                ReleasePreviewBuffers();
         }
 
         private void OnValidate() {

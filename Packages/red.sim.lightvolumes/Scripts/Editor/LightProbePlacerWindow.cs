@@ -1,6 +1,5 @@
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.Rendering;
 
 namespace VRCLightVolumes {
     public class LightProbePlacerWindow : EditorWindow {
@@ -16,12 +15,7 @@ namespace VRCLightVolumes {
         private bool _isWindowActive = false;
 
         // Preview
-        private Material _previewMaterial;
-        private Mesh _previewMesh;
-        private ComputeBuffer _posBuf;
-        private ComputeBuffer _argsBuf;
-        static readonly int _previewPosID = Shader.PropertyToID("_Positions");
-        static readonly int _previewScaleID = Shader.PropertyToID("_Scale");
+        private LightVolumePreviewRenderer _previewRenderer;
 
         public static LightProbePlacerWindow Show(LightVolume volume) {
             LightProbePlacerWindow window = ScriptableObject.CreateInstance<LightProbePlacerWindow>();
@@ -56,7 +50,7 @@ namespace VRCLightVolumes {
         private void OnDisable() {
 
             SceneView.duringSceneGui -= OnSceneGUI;
-            ReleasePreviewBuffers();
+            ReleasePreviewRenderer();
             _isWindowActive = false;
 
         }
@@ -64,51 +58,18 @@ namespace VRCLightVolumes {
         private void OnSceneGUI(SceneView sceneView) {
 
             if (!_isWindowActive) return;
-
-            Vector3[] pPositions; // Draw only 1000 000 first probes!
-            if (_probesPositions.Length > 1000000) {
-                pPositions = new Vector3[1000000];
-                System.Array.Copy(_probesPositions, pPositions, 1000000);
-            } else {
-                pPositions = _probesPositions;
-            }
-
-            // Initialize Buffers
-            if (_posBuf == null || _posBuf.count != pPositions.Length) {
-                ReleasePreviewBuffers();
-                _posBuf = new ComputeBuffer(pPositions.Length, sizeof(float) * 3);
-                _argsBuf = new ComputeBuffer(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
-            }
-
-            // Generate Sphere mesh
-            if (_previewMesh == null) {
-                _previewMesh = LVUtils.GenerateIcoSphere(0.5f, 0);
-            }
-
-            // Create Material
-            if (_previewMaterial == null) {
-                _previewMaterial = new Material(Shader.Find("Hidden/LightVolumesPreview"));
-            }
-
-            // Calculating radius
-            Vector3 scale = _lightVolume.GetScale();
-            Vector3 res = _resolution;
-            float radius = Mathf.Min(scale.z / res.z, Mathf.Min(scale.x / res.x, scale.y / res.y)) / 3;
-
-            // Setting data to buffers
-            _posBuf.SetData(pPositions);
-            _previewMaterial.SetBuffer(_previewPosID, _posBuf);
-            _previewMaterial.SetFloat(_previewScaleID, radius);
-            _argsBuf.SetData(new uint[] { _previewMesh.GetIndexCount(0), (uint)pPositions.Length, _previewMesh.GetIndexStart(0), (uint)_previewMesh.GetBaseVertex(0), 0 });
-
-            Bounds bounds = LVUtils.BoundsFromTRS(_lightVolume.GetMatrixTRS());
-            Graphics.DrawMeshInstancedIndirect(_previewMesh, 0, _previewMaterial, bounds, _argsBuf, 0, null, ShadowCastingMode.Off, false, _lightVolume.gameObject.layer);
+            if (Event.current.type != EventType.Repaint) return;
+            if (_lightVolume == null) return;
+            if (_previewRenderer == null) _previewRenderer = new LightVolumePreviewRenderer();
+            _previewRenderer.DrawProbeGrid(_lightVolume, _resolution, sceneView.camera);
 
         }
 
-        void ReleasePreviewBuffers() {
-            if (_posBuf != null) { _posBuf.Release(); _posBuf = null; }
-            if (_argsBuf != null) { _argsBuf.Release(); _argsBuf = null; }
+        // Releases preview renderer resources.
+        void ReleasePreviewRenderer() {
+            if (_previewRenderer == null) return;
+            _previewRenderer.Dispose();
+            _previewRenderer = null;
         }
 
         private void OnGUI() {
@@ -144,32 +105,36 @@ namespace VRCLightVolumes {
             SceneView.RepaintAll();
         }
 
+        // Creates a LightProbeGroup using the current preview resolution.
         private void CreateLightProbeGroup() {
+            Recalculate();
+            RecalculateProbesPositions();
             GameObject go = new GameObject("Light Probes - " + _lightVolume.gameObject.name);
             go.transform.parent = _lightVolume.transform;
-            go.transform.SetPositionAndRotation(go.transform.position, go.transform.rotation);
             LightProbeGroup probeGroup = go.AddComponent<LightProbeGroup>();
             probeGroup.probePositions = _probesPositions;
             EditorGUIUtility.PingObject(go);
             Selection.activeObject = go;
         }
 
-        public void Recalculate() {
+        // Recalculates preview resolution from current window settings.
+        private void Recalculate() {
             if (_adaptiveResolution) RecalculateAdaptiveResolution();
-            RecalculateProbesPositions();
         }
 
-        // Recalculates resolution based on Adaptive Resolution
-        public void RecalculateAdaptiveResolution() {
-            Vector3 count = Vector3.Scale(Vector3.one, _lightVolume.GetScale()) * _voxelsPerUnit;
+        // Recalculates resolution based on Adaptive Resolution.
+        private void RecalculateAdaptiveResolution() {
+            Vector3 scale = _lightVolume.GetScale();
+            scale = new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
+            Vector3 count = scale * _voxelsPerUnit;
             int x = Mathf.Max((int)Mathf.Round(count.x), 1);
             int y = Mathf.Max((int)Mathf.Round(count.y), 1);
             int z = Mathf.Max((int)Mathf.Round(count.z), 1);
             _resolution = new Vector3Int(x, y, z);
         }
 
-        // Recalculates probes world positions
-        public void RecalculateProbesPositions() {
+        // Recalculates probes world positions.
+        private void RecalculateProbesPositions() {
             _probesPositions = new Vector3[_resolution.x * _resolution.y * _resolution.z];
             Vector3 offset = new Vector3(0.5f, 0.5f, 0.5f);
             var pos = _lightVolume.GetPosition();

@@ -17,6 +17,7 @@ namespace VRCLightVolumes {
         private void OnEnable() {
             _previousTool = Tools.current;
             LightVolume = (LightVolume)target;
+            LightVolumePreviewSceneRenderer.RequestRefresh();
         }
 
         public override void OnInspectorGUI() {
@@ -43,10 +44,10 @@ namespace VRCLightVolumes {
 
             bool newIsEditMode = GUILayout.Toggle(_isEditMode, editBoundsContent, toggleStyle);
             GUILayout.Space(10);
-            bool newPreviewProbes = GUILayout.Toggle(LightVolume.PreviewVoxels, previewProbesContent, toggleStyle);
-            if (newPreviewProbes != LightVolume.PreviewVoxels) {
-                LightVolume.RecalculateProbesPositions();
-                LightVolume.PreviewVoxels = newPreviewProbes;
+            bool previewVoxels = LightVolumePreviewSceneRenderer.IsPreviewModeActive;
+            bool newPreviewProbes = GUILayout.Toggle(previewVoxels, previewProbesContent, toggleStyle);
+            if (newPreviewProbes != previewVoxels) {
+                LightVolumePreviewSceneRenderer.SetPreviewMode(newPreviewProbes);
                 RepaintAll();
             }
 
@@ -112,14 +113,14 @@ namespace VRCLightVolumes {
 
             // Clicking on a new tool
             if (_isEditMode && _previousTool != Tools.current) {
-                // Went from edit mode 
+                // Went from edit mode
                 _previousTool = Tools.current;
                 _isEditMode = false;
                 Tools.hidden = false;
                 RepaintAll();
             }
 
-            List<string> hiddenFields = new List<string> { "m_Script", "PreviewVoxels", "LightVolumeInstance", "LightVolumeSetup" };
+            List<string> hiddenFields = new List<string> { "m_Script", "LightVolumeInstance", "LightVolumeSetup" };
 
 #if BAKERY_INCLUDED
             hiddenFields.Add("BakeryVolume");
@@ -256,8 +257,7 @@ namespace VRCLightVolumes {
 
         // Bring back tools
         void OnDisable() {
-            LightVolume.PreviewVoxels = false;
-            LightVolume.ResetProbesPositions(); // Needs to be resetted to prevent unity stall
+            LightVolumePreviewSceneRenderer.RequestRefresh();
             Tools.hidden = false;
             if (_isEditMode) {
                 // Went from edit mode
