@@ -6,6 +6,7 @@ Shader "Light Volume Samples/Light Volume Debugger" {
 
         [Header(Light Volumes)]
         [IntRange] _DebugVolumeID("Volume ID", Range(0, 31)) = 0
+        [Toggle] _DebugAutoVolumeID("Auto Volume ID", Float) = 0
         _DebugSphereRadius("Sphere size", Range(0, 1)) = 0.7
         _DebugVisibleFraction("Draw Amount", Range(0, 1)) = 1
         _DebugBoundsThickness("Bounds Thickness", Float) = 0.02
@@ -20,7 +21,7 @@ Shader "Light Volume Samples/Light Volume Debugger" {
     }
 
     SubShader {
-        Tags { "Queue" = "AlphaTest" "RenderType" = "TransparentCutout" "IgnoreProjector" = "True" "DisableBatching" = "True" }
+        Tags { "Queue" = "Overlay" "RenderType" = "Transparent" "IgnoreProjector" = "True" "DisableBatching" = "True" }
 
         CGINCLUDE
         #include "UnityCG.cginc"
@@ -41,6 +42,7 @@ Shader "Light Volume Samples/Light Volume Debugger" {
 
         int _DebugDrawMode;
         float _DebugVolumeID;
+        float _DebugAutoVolumeID;
         float _DebugSphereRadius;
         float _DebugVisibleFraction;
         float _DebugMeshCardCount;
@@ -83,6 +85,50 @@ Shader "Light Volume Samples/Light Volume Debugger" {
         float3 LVDebugSafeNormalize(float3 value, float3 fallback) {
             float lengthSq = dot(value, value);
             return lengthSq > 1e-8 ? value * rsqrt(lengthSq) : fallback;
+        }
+
+        // Clamps the material draw mode to a valid enum value.
+        int LVDebugResolveDrawMode() {
+            if (_DebugDrawMode < LVDEBUG_MODE_SELECTED_VOLUME) return LVDEBUG_MODE_SELECTED_VOLUME;
+            if (_DebugDrawMode > LVDEBUG_MODE_ALL_LIGHTS) return LVDEBUG_MODE_ALL_LIGHTS;
+            return _DebugDrawMode;
+        }
+
+        // Clamps the manual material volume ID to the available runtime volume range.
+        uint LVDebugClampVolumeID(float volumeID, uint volumeCount) {
+            if (volumeCount == 0u) return 0u;
+
+            float maxVolumeID = (float)(volumeCount - 1u);
+            return (uint)floor(clamp(volumeID, 0.0, maxVolumeID) + 0.5);
+        }
+
+        // Returns true when a world-space point is inside the selected Light Volume bounds.
+        bool LVDebugIsPointInsideVolume(uint volumeID, float3 worldPos) {
+            float3 localUVW = LV_LocalFromVolume(volumeID, worldPos);
+            return LV_PointLocalAABB(localUVW);
+        }
+
+        // Resolves the manually selected volume or the highest-weight volume containing the camera.
+        uint LVDebugResolveVolumeID() {
+            uint volumeCount = min((uint)_UdonLightVolumeCount, (uint)VRCLV_MAX_VOLUMES_COUNT);
+            uint manualID = LVDebugClampVolumeID(_DebugVolumeID, volumeCount);
+            if (volumeCount == 0u || _DebugAutoVolumeID <= 0.5) return manualID;
+
+            uint additiveCount = min((uint)_UdonLightVolumeAdditiveCount, volumeCount);
+            float3 cameraPosition = _WorldSpaceCameraPos;
+
+            [loop] for (uint id = 0u; id < (uint)VRCLV_MAX_VOLUMES_COUNT; id++) {
+                if (id < additiveCount) continue;
+                if (id >= volumeCount) break;
+                if (LVDebugIsPointInsideVolume(id, cameraPosition)) return id;
+            }
+
+            [loop] for (uint additiveID = 0u; additiveID < (uint)VRCLV_MAX_VOLUMES_COUNT; additiveID++) {
+                if (additiveID >= additiveCount) break;
+                if (LVDebugIsPointInsideVolume(additiveID, cameraPosition)) return additiveID;
+            }
+
+            return manualID;
         }
         ENDCG
 
@@ -358,9 +404,9 @@ Shader "Light Volume Samples/Light Volume Debugger" {
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 DisableVolumeVertex(o);
 
-                if (_DebugDrawMode != LVDEBUG_MODE_SELECTED_VOLUME) return o;
+                if (LVDebugResolveDrawMode() != LVDEBUG_MODE_SELECTED_VOLUME) return o;
 
-                uint volumeID = (uint)floor(max(_DebugVolumeID, 0.0) + 0.5);
+                uint volumeID = LVDebugResolveVolumeID();
                 uint volumeCount = min((uint)_UdonLightVolumeCount, (uint)VRCLV_MAX_VOLUMES_COUNT);
                 if (_UdonLightVolumeEnabled <= 0.0 || volumeID >= volumeCount) return o;
 
@@ -538,9 +584,9 @@ Shader "Light Volume Samples/Light Volume Debugger" {
                 uint additiveCount = min((uint)_UdonLightVolumeAdditiveCount, volumeCount);
                 if (_UdonLightVolumeEnabled <= 0.0 || volumeCount == 0u) return false;
 
-                uint volumeID = (uint)floor(max(_DebugVolumeID, 0.0) + 0.5);
+                uint volumeID = LVDebugResolveVolumeID();
                 uint edgeID = cardID;
-                if (_DebugDrawMode == LVDEBUG_MODE_ALL_VOLUME_BOUNDS) {
+                if (LVDebugResolveDrawMode() == LVDEBUG_MODE_ALL_VOLUME_BOUNDS) {
                     volumeID = cardID / LVDEBUG_BOUNDS_EDGE_COUNT;
                     edgeID = cardID - volumeID * LVDEBUG_BOUNDS_EDGE_COUNT;
                 }
@@ -639,10 +685,11 @@ Shader "Light Volume Samples/Light Volume Debugger" {
                 half4 color = half4(1.0, 1.0, 1.0, 1.0);
                 half overlayType = LVDEBUG_OVERLAY_LINE;
                 bool valid = false;
+                int drawMode = LVDebugResolveDrawMode();
 
-                if (_DebugDrawMode == LVDEBUG_MODE_SELECTED_VOLUME || _DebugDrawMode == LVDEBUG_MODE_ALL_VOLUME_BOUNDS) {
+                if (drawMode == LVDEBUG_MODE_SELECTED_VOLUME || drawMode == LVDEBUG_MODE_ALL_VOLUME_BOUNDS) {
                     valid = TryBuildVolumeBoundsCard(cardID, quad, posWS, color);
-                } else if (_DebugDrawMode == LVDEBUG_MODE_ALL_LIGHTS) {
+                } else if (drawMode == LVDEBUG_MODE_ALL_LIGHTS) {
                     valid = TryBuildLightCard(cardID, quad, posWS, color, overlayType);
                 }
 
