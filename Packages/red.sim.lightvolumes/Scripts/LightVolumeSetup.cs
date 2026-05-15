@@ -91,6 +91,16 @@ namespace VRCLightVolumes {
         //You probably don't want to mess with this field manually.
         public PostProcessor[] AtlasPostProcessors;
 
+        //Render Textures that will be applied top to bottom to the Point Light Volume cookie texture array at runtime.
+        //External scripts can register themselves here using `RegisterCookiePostProcessorCRT` or `RegisterCookiePostProcessor`.
+        //You probably don't want to mess with this field manually.
+        public PostProcessor[] CookiePostProcessors;
+
+        //Render Textures that will be applied top to bottom to the Point Light Volume shadow depth texture array at runtime.
+        //External scripts can register themselves here using `RegisterShadowPostProcessorCRT` or `RegisterShadowPostProcessor`.
+        //You probably don't want to mess with this field manually.
+        public PostProcessor[] ShadowPostProcessors;
+
         public bool IsBakeryMode => BakingMode == Baking.Bakery; // Just a shortcut
         public LightVolumeManager LightVolumeManager;
 
@@ -209,28 +219,35 @@ namespace VRCLightVolumes {
             _customTexPointVolumes.AddRange(cubePLVs);
             _customTexPointVolumes.AddRange(singlePLVs);
 
-            if(_customTexPointVolumes.Count == 0) {
-#if UDONSHARP
-                if (Application.isPlaying) {
-                    _lightVolumeManagerBehaviour.SetProgramVariable("CustomTextures", null);
-                    _lightVolumeManagerBehaviour.SetProgramVariable("CubemapsCount", 0);
-                } else {
-#endif
-                    LightVolumeManager.CustomTextures = null;
-                    LightVolumeManager.CubemapsCount = 0;
-#if UDONSHARP
-                }
-#endif
-            }
-
             // Stop old coroutine if one is in process already
             if (_generateTextureArrayCoroutine != null) {
                 EditorCoroutineUtility.StopCoroutine(_generateTextureArrayCoroutine);
                 _generateTextureArrayCoroutine = null;
             }
+
+            if(_customTexPointVolumes.Count == 0) {
+                LightVolumeManager.CustomTexturesBase = null;
+                UpdateCookiePostProcessors();
+#if UDONSHARP
+                if (Application.isPlaying) {
+                    _lightVolumeManagerBehaviour.SetProgramVariable("CustomTextures", LightVolumeManager.CustomTextures);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("CubemapsCount", 0);
+                } else {
+#endif
+                    LightVolumeManager.CubemapsCount = 0;
+#if UDONSHARP
+                }
+#endif
+                SyncUdonScript();
+                return;
+            }
+
             _generateTextureArrayCoroutine = EditorCoroutineUtility.StartCoroutine(TextureArrayGenerator.CreateTexture2DArrayAsync(textures, (int)CookieResolution, (TextureFormat)CookieFormat, (texArray, ids) => {
 
-                if(DontSync) return;
+                if (DontSync) {
+                    _generateTextureArrayCoroutine = null;
+                    return;
+                }
 
                 if (texArray != null) {
                     for (int i = 0; i < ids.Length; i++) {
@@ -240,13 +257,14 @@ namespace VRCLightVolumes {
                         }
                     }
                 }
+                LightVolumeManager.CustomTexturesBase = texArray;
+                UpdateCookiePostProcessors();
 #if UDONSHARP
                 if (Application.isPlaying) {
-                    _lightVolumeManagerBehaviour.SetProgramVariable("CustomTextures", texArray);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("CustomTextures", LightVolumeManager.CustomTextures);
                     _lightVolumeManagerBehaviour.SetProgramVariable("CubemapsCount", cubeTextures.Count);
                 } else {
 #endif
-                    LightVolumeManager.CustomTextures = texArray;
                     LightVolumeManager.CubemapsCount = cubeTextures.Count;
 #if UDONSHARP
                 }
@@ -292,13 +310,14 @@ namespace VRCLightVolumes {
             }
 
             if (_shadowVolumes.Count == 0) {
+                LightVolumeManager.ShadowTexturesBase = null;
+                UpdateShadowPostProcessors();
 #if UDONSHARP
                 if (Application.isPlaying) {
-                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowTextures", null);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowTextures", LightVolumeManager.ShadowTextures);
                     _lightVolumeManagerBehaviour.SetProgramVariable("ShadowMapsCount", 0);
                 } else {
 #endif
-                    LightVolumeManager.ShadowTextures = null;
                     LightVolumeManager.ShadowMapsCount = 0;
 #if UDONSHARP
                 }
@@ -323,21 +342,22 @@ namespace VRCLightVolumes {
                         }
                     }
                 }
+                if (texArray != null) texArray.filterMode = FilterMode.Point;
+                LightVolumeManager.ShadowTexturesBase = texArray;
+                UpdateShadowPostProcessors();
 #if UDONSHARP
                 if (Application.isPlaying) {
-                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowTextures", texArray);
+                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowTextures", LightVolumeManager.ShadowTextures);
                     _lightVolumeManagerBehaviour.SetProgramVariable("ShadowMapsCount", texArray != null ? texArray.depth / 6 : 0);
                     _lightVolumeManagerBehaviour.SetProgramVariable("ShadowResolution", (float)ShadowResolution);
                 } else {
 #endif
-                    LightVolumeManager.ShadowTextures = texArray;
                     LightVolumeManager.ShadowMapsCount = texArray != null ? texArray.depth / 6 : 0;
                     LightVolumeManager.ShadowResolution = (float)ShadowResolution;
 #if UDONSHARP
                 }
 #endif
                 if (texArray != null) {
-                    texArray.filterMode = FilterMode.Point;
                     string assetPath = $"{Path.GetDirectoryName(SceneManager.GetActiveScene().path)}/{SceneManager.GetActiveScene().name}/VRCLightVolumes/PointLightVolumeShadowArray.asset";
                     if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath) != null) {
                         AssetDatabase.DeleteAsset(assetPath);
@@ -550,7 +570,7 @@ namespace VRCLightVolumes {
                 if (atlas.Texture == null || DontSync) return; // Return if atlas packing failed
 
                 LightVolumeManager.LightVolumeAtlasBase = atlas.Texture;
-                UpdatePostProcessors();
+                UpdateAtlasPostProcessors();
 
                 LightVolumeDataList.Clear();
 
@@ -762,80 +782,196 @@ namespace VRCLightVolumes {
         }
 
 #if UNITY_EDITOR
+        // Registers a Custom Render Texture post processor for the Light Volume 3D atlas.
         public void RegisterPostProcessorCRT(CustomRenderTexture crt) {
-            if (crt == null) return;
-            AtlasPostProcessors ??= new PostProcessor[0];
-            if (AtlasPostProcessors.Any(pp => pp.RT == crt)) return;
-            Array.Resize(ref AtlasPostProcessors, AtlasPostProcessors.Length + 1);
-            AtlasPostProcessors[^1] = new PostProcessor { RT = crt, Mat = crt.material, TextureName = "_MainTex", Update = crt.Update };
-            Debug.Log($"[LightVolumeSetup] Registered post processor CRT: {crt.name}");
-            UpdatePostProcessors();
+            RegisterPostProcessorCRT(ref AtlasPostProcessors, crt, "", UpdateAtlasPostProcessors);
         }
 
+        // Unregisters a Custom Render Texture post processor from the Light Volume 3D atlas.
         public void UnregisterPostProcessorCRT(CustomRenderTexture crt) => UnregisterPostProcessor(crt); // API backwards compat
+
+        // Unregisters a post processor from the Light Volume 3D atlas.
         public void UnregisterPostProcessor(RenderTexture crt) {
-            if (crt == null || AtlasPostProcessors == null) return;
-            var index = Array.FindIndex(AtlasPostProcessors, pp => pp.RT == crt);
+            UnregisterPostProcessor(ref AtlasPostProcessors, crt, "", UpdateAtlasPostProcessors);
+        }
+
+        // Registers a Render Texture post processor for the Light Volume 3D atlas.
+        public void RegisterPostProcessor(PostProcessor pp) {
+            RegisterPostProcessor(ref AtlasPostProcessors, pp, "", UpdateAtlasPostProcessors);
+        }
+
+        // Registers a Custom Render Texture post processor for the Point Light Volume cookie texture array.
+        public void RegisterCookiePostProcessorCRT(CustomRenderTexture crt) {
+            RegisterPostProcessorCRT(ref CookiePostProcessors, crt, "cookie", UpdateCookiePostProcessors);
+        }
+
+        // Unregisters a Custom Render Texture post processor from the Point Light Volume cookie texture array.
+        public void UnregisterCookiePostProcessorCRT(CustomRenderTexture crt) => UnregisterCookiePostProcessor(crt);
+
+        // Unregisters a post processor from the Point Light Volume cookie texture array.
+        public void UnregisterCookiePostProcessor(RenderTexture rt) {
+            UnregisterPostProcessor(ref CookiePostProcessors, rt, "cookie", UpdateCookiePostProcessors);
+        }
+
+        // Registers a Render Texture post processor for the Point Light Volume cookie texture array.
+        public void RegisterCookiePostProcessor(PostProcessor pp) {
+            RegisterPostProcessor(ref CookiePostProcessors, pp, "cookie", UpdateCookiePostProcessors);
+        }
+
+        // Registers a Custom Render Texture post processor for the Point Light Volume shadow depth array.
+        public void RegisterShadowPostProcessorCRT(CustomRenderTexture crt) {
+            RegisterPostProcessorCRT(ref ShadowPostProcessors, crt, "shadow depth", UpdateShadowPostProcessors);
+        }
+
+        // Unregisters a Custom Render Texture post processor from the Point Light Volume shadow depth array.
+        public void UnregisterShadowPostProcessorCRT(CustomRenderTexture crt) => UnregisterShadowPostProcessor(crt);
+
+        // Unregisters a post processor from the Point Light Volume shadow depth array.
+        public void UnregisterShadowPostProcessor(RenderTexture rt) {
+            UnregisterPostProcessor(ref ShadowPostProcessors, rt, "shadow depth", UpdateShadowPostProcessors);
+        }
+
+        // Registers a Render Texture post processor for the Point Light Volume shadow depth array.
+        public void RegisterShadowPostProcessor(PostProcessor pp) {
+            RegisterPostProcessor(ref ShadowPostProcessors, pp, "shadow depth", UpdateShadowPostProcessors);
+        }
+
+        // Registers a Custom Render Texture post processor in a shared post processor list.
+        private void RegisterPostProcessorCRT(ref PostProcessor[] postProcessors, CustomRenderTexture crt, string targetName, Action updatePostProcessors) {
+            if (crt == null) return;
+            postProcessors ??= new PostProcessor[0];
+            if (ContainsPostProcessor(postProcessors, crt)) return;
+            Array.Resize(ref postProcessors, postProcessors.Length + 1);
+            postProcessors[^1] = new PostProcessor { RT = crt, Mat = crt.material, TextureName = "_MainTex", Update = crt.Update };
+            Debug.Log($"[LightVolumeSetup] Registered {GetPostProcessorLogName(targetName)} CRT: {crt.name}");
+            updatePostProcessors?.Invoke();
+        }
+
+        // Unregisters a post processor from a shared post processor list.
+        private void UnregisterPostProcessor(ref PostProcessor[] postProcessors, RenderTexture rt, string targetName, Action updatePostProcessors) {
+            if (rt == null || postProcessors == null) return;
+            int index = Array.FindIndex(postProcessors, pp => pp.RT == rt);
             if (index < 0) return;
-            var newArray = new PostProcessor[AtlasPostProcessors.Length - 1];
-            for (int i = 0, j = 0; i < AtlasPostProcessors.Length; i++) {
+            PostProcessor[] newArray = new PostProcessor[postProcessors.Length - 1];
+            for (int i = 0, j = 0; i < postProcessors.Length; i++) {
                 if (i != index) {
-                    newArray[j] = AtlasPostProcessors[i];
+                    newArray[j] = postProcessors[i];
                     j++;
                 }
             }
-            AtlasPostProcessors = newArray;
-            Debug.Log($"[LightVolumeSetup] Unregistered post processor CRT: {crt.name}");
-            UpdatePostProcessors();
+            postProcessors = newArray;
+            Debug.Log($"[LightVolumeSetup] Unregistered {GetPostProcessorLogName(targetName)}: {rt.name}");
+            updatePostProcessors?.Invoke();
         }
 
-        public void RegisterPostProcessor(PostProcessor pp) {
+        // Registers a Render Texture post processor in a shared post processor list.
+        private void RegisterPostProcessor(ref PostProcessor[] postProcessors, PostProcessor pp, string targetName, Action updatePostProcessors) {
             if (pp.RT == null || pp.Mat == null) return;
-            AtlasPostProcessors ??= new PostProcessor[0];
-            if (AtlasPostProcessors.Any(existing => existing.RT == pp.RT)) return;
-            Array.Resize(ref AtlasPostProcessors, AtlasPostProcessors.Length + 1);
-            AtlasPostProcessors[^1] = pp;
-            Debug.Log($"[LightVolumeSetup] Registered post processor: {pp.RT.name}");
-            UpdatePostProcessors();
+            postProcessors ??= new PostProcessor[0];
+            if (ContainsPostProcessor(postProcessors, pp.RT)) return;
+            if (string.IsNullOrEmpty(pp.TextureName)) pp.TextureName = "_MainTex";
+            Array.Resize(ref postProcessors, postProcessors.Length + 1);
+            postProcessors[^1] = pp;
+            Debug.Log($"[LightVolumeSetup] Registered {GetPostProcessorLogName(targetName)}: {pp.RT.name}");
+            updatePostProcessors?.Invoke();
         }
 
-        private void UpdatePostProcessors() {
-            if (AtlasPostProcessors == null || AtlasPostProcessors.Length == 0) {
-                // no post processors, just use base atlas
-                LightVolumeManager.LightVolumeAtlas = LightVolumeManager.LightVolumeAtlasBase;
-                return;
+        // Checks if a post processor render target is already registered.
+        private static bool ContainsPostProcessor(PostProcessor[] postProcessors, RenderTexture rt) {
+            for (int i = 0; i < postProcessors.Length; i++) {
+                if (postProcessors[i].RT == rt) return true;
             }
+            return false;
+        }
 
-            Texture3D baseAtlas = LightVolumeManager.LightVolumeAtlasBase;
-            Texture prevAtlas = baseAtlas;
-            foreach (PostProcessor pp in AtlasPostProcessors) {
+        // Builds the display name used by post processor log messages.
+        private static string GetPostProcessorLogName(string targetName) {
+            return string.IsNullOrEmpty(targetName) ? "post processor" : $"{targetName} post processor";
+        }
+
+        // Updates the Light Volume 3D atlas post processor chain and stores its active output.
+        private void UpdateAtlasPostProcessors() {
+            if (LightVolumeManager == null) return;
+            LightVolumeManager.LightVolumeAtlas = UpdatePostProcessorChain(
+                AtlasPostProcessors,
+                LightVolumeManager.LightVolumeAtlasBase,
+                UnityEngine.Rendering.TextureDimension.Tex3D,
+                UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_SFloat,
+                FilterMode.Trilinear);
+        }
+
+        // Updates the Point Light Volume cookie texture array post processor chain and stores its active output.
+        private void UpdateCookiePostProcessors() {
+            if (LightVolumeManager == null) return;
+            LightVolumeManager.CustomTextures = UpdatePostProcessorChain(
+                CookiePostProcessors,
+                LightVolumeManager.CustomTexturesBase,
+                UnityEngine.Rendering.TextureDimension.Tex2DArray,
+                UnityEngine.Experimental.Rendering.GraphicsFormatUtility.GetGraphicsFormat((TextureFormat)CookieFormat, true),
+                FilterMode.Trilinear);
+        }
+
+        // Updates the Point Light Volume shadow depth array post processor chain and stores its active output.
+        private void UpdateShadowPostProcessors() {
+            if (LightVolumeManager == null) return;
+            LightVolumeManager.ShadowTextures = UpdatePostProcessorChain(
+                ShadowPostProcessors,
+                LightVolumeManager.ShadowTexturesBase,
+                UnityEngine.Rendering.TextureDimension.Tex2DArray,
+                UnityEngine.Experimental.Rendering.GraphicsFormatUtility.GetGraphicsFormat(GetShadowTextureFormat(), true),
+                FilterMode.Point);
+        }
+
+        // Applies a post processor chain to a base texture and returns the last valid output.
+        private Texture UpdatePostProcessorChain(PostProcessor[] postProcessors, Texture baseTexture, UnityEngine.Rendering.TextureDimension dimension, UnityEngine.Experimental.Rendering.GraphicsFormat graphicsFormat, FilterMode filterMode) {
+            if (baseTexture == null || postProcessors == null || postProcessors.Length == 0) return baseTexture;
+
+            Texture prevTexture = baseTexture;
+            bool hasValidProcessor = false;
+            for (int i = 0; i < postProcessors.Length; i++) {
+                PostProcessor pp = postProcessors[i];
                 RenderTexture rt = pp.RT;
                 Material mat = pp.Mat;
                 if (rt == null || mat == null) continue;
 
-                // enforce some base settings to ensure no quality loss between post processors
-                rt.Release();
-                rt.dimension = UnityEngine.Rendering.TextureDimension.Tex3D;
-                rt.graphicsFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_SFloat;
-                if (rt is CustomRenderTexture crt)
-                    crt.updateMode = CustomRenderTextureUpdateMode.Realtime;
+                SetupPostProcessorRenderTexture(rt, baseTexture, dimension, graphicsFormat, filterMode);
 
-                if (baseAtlas != null) {
-                    rt.width = baseAtlas.width;
-                    rt.height = baseAtlas.height;
-                    rt.volumeDepth = baseAtlas.depth;
-                }
+                string textureName = string.IsNullOrEmpty(pp.TextureName) ? "_MainTex" : pp.TextureName;
+                mat.SetTexture(textureName, prevTexture);
+                prevTexture = rt;
+                hasValidProcessor = true;
 
-                // build processing chain
-                mat.SetTexture(pp.TextureName, prevAtlas);
-                prevAtlas = rt;
-
-                // store last CRT as active
-                LightVolumeManager.LightVolumeAtlas = rt;
-
-                // force an update right away
                 pp.Update?.Invoke();
             }
+
+            return hasValidProcessor ? prevTexture : baseTexture;
+        }
+
+        // Enforces dimensions and format on a post processor render target before running its update.
+        private static void SetupPostProcessorRenderTexture(RenderTexture rt, Texture baseTexture, UnityEngine.Rendering.TextureDimension dimension, UnityEngine.Experimental.Rendering.GraphicsFormat graphicsFormat, FilterMode filterMode) {
+            rt.Release();
+            rt.dimension = dimension;
+            rt.graphicsFormat = graphicsFormat;
+            rt.enableRandomWrite = false;
+            rt.wrapMode = TextureWrapMode.Clamp;
+            rt.filterMode = filterMode;
+            rt.anisoLevel = 0;
+            rt.width = Mathf.Max(baseTexture.width, 1);
+            rt.height = Mathf.Max(baseTexture.height, 1);
+            rt.volumeDepth = Mathf.Max(GetTextureDepth(baseTexture), 1);
+            if (rt is CustomRenderTexture crt) {
+                crt.updateMode = CustomRenderTextureUpdateMode.Realtime;
+            }
+            rt.Create();
+        }
+
+        // Returns the depth or array-slice count for any texture type used by post processor chains.
+        private static int GetTextureDepth(Texture texture) {
+            if (texture is Texture3D texture3D) return texture3D.depth;
+            if (texture is Texture2DArray textureArray) return textureArray.depth;
+            if (texture is RenderTexture renderTexture) return renderTexture.volumeDepth;
+            if (texture is Cubemap) return 6;
+            return 1;
         }
 #endif
 

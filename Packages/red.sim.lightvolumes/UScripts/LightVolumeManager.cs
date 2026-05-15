@@ -48,10 +48,14 @@ namespace VRCLightVolumes {
         public PointLightVolumeInstance[] PointLightVolumeInstances = new PointLightVolumeInstance[0];
         [Tooltip("A texture array that can be used for as Cubemaps, LUT or Cookies")]
         public Texture CustomTextures;
+        [Tooltip("Base texture array containing generated Cubemaps, LUT and Cookies before the post process chain. This field is not used at runtime, see CustomTextures instead.")]
+        public Texture CustomTexturesBase;
         [Tooltip("Cubemaps count that stored in CustomTextures. Cubemap array elements starts from the beginning, 6 elements each.")]
         public int CubemapsCount = 0;
         [Tooltip("Texture array that stores per-light shadow maps.")]
         public Texture ShadowTextures;
+        [Tooltip("Base texture array containing generated per-light shadow maps before the post process chain. This field is not used at runtime, see ShadowTextures instead.")]
+        public Texture ShadowTexturesBase;
         [Tooltip("Shadow maps count stored in ShadowTextures. Each cubemap uses 6 array elements.")]
         public int ShadowMapsCount = 0;
         [Tooltip("Resolution of one shadow map cubemap face in pixels.")]

@@ -262,6 +262,8 @@ namespace VRCLightVolumes {
             hiddenFields.Add("ShadowResolution");
             hiddenFields.Add("ShadowFormat");
             hiddenFields.Add("AtlasPostProcessors");
+            hiddenFields.Add("CookiePostProcessors");
+            hiddenFields.Add("ShadowPostProcessors");
             int plvCount = _lightVolumeSetup.PointLightVolumes.Count;
             bool isShadow = false;
             bool isShadowBatchBake = false;
@@ -346,16 +348,25 @@ namespace VRCLightVolumes {
             ulong bytes = 0;
 
             bytes += GetTextureBytes(manager.LightVolumeAtlasBase, 8);
+            bytes += GetPostProcessorBytes(_lightVolumeSetup.AtlasPostProcessors, 8);
 
-            if (_lightVolumeSetup.AtlasPostProcessors != null) {
-                for (int i = 0; i < _lightVolumeSetup.AtlasPostProcessors.Length; i++) {
-                    bytes += GetTextureBytes(_lightVolumeSetup.AtlasPostProcessors[i].RT, 8);
-                }
+            Texture customTexturesBase = manager.CustomTexturesBase != null ? manager.CustomTexturesBase : manager.CustomTextures;
+            Texture shadowTexturesBase = manager.ShadowTexturesBase != null ? manager.ShadowTexturesBase : manager.ShadowTextures;
+            bytes += GetTextureBytes(customTexturesBase, GetCookieTextureFormatBytes(_lightVolumeSetup.CookieFormat));
+            bytes += GetPostProcessorBytes(_lightVolumeSetup.CookiePostProcessors, GetCookieTextureFormatBytes(_lightVolumeSetup.CookieFormat));
+            bytes += GetTextureBytes(shadowTexturesBase, GetShadowTextureFormatBytes(_lightVolumeSetup.ShadowFormat));
+            bytes += GetPostProcessorBytes(_lightVolumeSetup.ShadowPostProcessors, GetShadowTextureFormatBytes(_lightVolumeSetup.ShadowFormat));
+
+            return bytes;
+        }
+
+        // Calculates the total size of post processor render textures.
+        private ulong GetPostProcessorBytes(LightVolumeSetup.PostProcessor[] postProcessors, int bytesPerTexel) {
+            if (postProcessors == null) return 0;
+            ulong bytes = 0;
+            for (int i = 0; i < postProcessors.Length; i++) {
+                bytes += GetTextureBytes(postProcessors[i].RT, bytesPerTexel);
             }
-
-            bytes += GetTextureBytes(manager.CustomTextures, GetCookieTextureFormatBytes(_lightVolumeSetup.CookieFormat));
-            bytes += GetTextureBytes(manager.ShadowTextures, GetShadowTextureFormatBytes(_lightVolumeSetup.ShadowFormat));
-
             return bytes;
         }
 
