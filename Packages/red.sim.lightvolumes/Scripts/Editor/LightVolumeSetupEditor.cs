@@ -256,11 +256,12 @@ namespace VRCLightVolumes {
             GUILayout.Space(10);
 
             List<string> hiddenFields = new List<string>() { "m_Script", "LightVolumes", "PointLightVolumes", "LightVolumesWeights", "LightVolumeAtlas", "LightVolumeDataList", "LightVolumeManager", "_bakingModePrev", "IsLegacyUVWConverted" };
-            hiddenFields.Add("Resolution");
-            hiddenFields.Add("Format");
-            hiddenFields.Add("LightsBrightnessCutoff");
+            hiddenFields.Add("CookieResolution");
+            hiddenFields.Add("CookieFormat");
+            hiddenFields.Add("BrightnessCutoff");
             hiddenFields.Add("ShadowResolution");
             hiddenFields.Add("ShadowFormat");
+            hiddenFields.Add("AtlasPostProcessors");
             int plvCount = _lightVolumeSetup.PointLightVolumes.Count;
             bool isShadow = false;
             bool isShadowBatchBake = false;
@@ -288,13 +289,13 @@ namespace VRCLightVolumes {
             GUILayout.Space(-15);
 
             if (plvCount > 0) {
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("Resolution"), _cookieResolutionContent);
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("Format"), _cookieFormatContent);
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("CookieResolution"), _cookieResolutionContent);
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("CookieFormat"), _cookieFormatContent);
                 if (isShadow) {
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("ShadowResolution"), _shadowResolutionContent);
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("ShadowFormat"), _shadowFormatContent);
                 }
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("LightsBrightnessCutoff"), _brightnessCutoffContent);
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("BrightnessCutoff"), _brightnessCutoffContent);
             }
 
             if (_lightVolumeSetup.BakingMode != LightVolumeSetup.Baking.Bakery) {
@@ -352,7 +353,7 @@ namespace VRCLightVolumes {
                 }
             }
 
-            bytes += GetTextureBytes(manager.CustomTextures, GetCookieTextureFormatBytes(_lightVolumeSetup.Format));
+            bytes += GetTextureBytes(manager.CustomTextures, GetCookieTextureFormatBytes(_lightVolumeSetup.CookieFormat));
             bytes += GetTextureBytes(manager.ShadowTextures, GetShadowTextureFormatBytes(_lightVolumeSetup.ShadowFormat));
 
             return bytes;

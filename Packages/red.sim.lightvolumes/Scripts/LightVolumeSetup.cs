@@ -2,6 +2,7 @@ using UnityEngine;
 using System;
 using System.Collections.Generic;
 using UnityEditor;
+using UnityEngine.Serialization;
 
 #if UDONSHARP
 using VRC.Udon;
@@ -12,7 +13,6 @@ using Unity.EditorCoroutines.Editor;
 using System.IO;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
-using UnityEngine.Diagnostics;
 using System.Linq;
 #endif
 
@@ -27,14 +27,14 @@ namespace VRCLightVolumes {
 
         [Header("Point Light Volumes")]
         [Tooltip("Resolution used for point light cookie, LUT and cubemap projection textures.")]
-        [InspectorName("Cookie Resolution")]
-        public TextureArrayResolution Resolution = TextureArrayResolution._128x128;
+        [FormerlySerializedAs("Resolution")]
+        public TextureArrayResolution CookieResolution = TextureArrayResolution._128x128;
         [Tooltip("Texture format used for point light cookie, LUT and cubemap projection textures.")]
-        [InspectorName("Cookie Format")]
-        public TextureArrayFormat Format = TextureArrayFormat.RGBAHalf;
+        [FormerlySerializedAs("Format")]
+        public TextureArrayFormat CookieFormat = TextureArrayFormat.RGBAHalf;
         [Tooltip("The minimum brightness at a point due to lighting from a Point Light Volume, before the light is culled. Larger values will result in better performance, but light attenuation will be less physically correct.")]
-        [InspectorName("Brightness Cutoff")]
-        [Range(0.05f, 1f)] public float LightsBrightnessCutoff = 0.35f;
+        [FormerlySerializedAs("LightsBrightnessCutoff")]
+        [Range(0.05f, 1f)] public float BrightnessCutoff = 0.35f;
         [Tooltip("Resolution used for per-light shadow maps.")]
         public TextureArrayResolution ShadowResolution = TextureArrayResolution._128x128;
         [Tooltip("Texture format used for per-light shadow maps. RHalf is smaller, RFloat is more precise.")]
@@ -226,7 +226,7 @@ namespace VRCLightVolumes {
                 EditorCoroutineUtility.StopCoroutine(_generateTextureArrayCoroutine);
                 _generateTextureArrayCoroutine = null;
             }
-            _generateTextureArrayCoroutine = EditorCoroutineUtility.StartCoroutine(TextureArrayGenerator.CreateTexture2DArrayAsync(textures, (int)Resolution, (TextureFormat)Format, (texArray, ids) => {
+            _generateTextureArrayCoroutine = EditorCoroutineUtility.StartCoroutine(TextureArrayGenerator.CreateTexture2DArrayAsync(textures, (int)CookieResolution, (TextureFormat)CookieFormat, (texArray, ids) => {
 
                 if(DontSync) return;
 
@@ -478,9 +478,9 @@ namespace VRCLightVolumes {
                 }
                 SyncUdonScript();
             }
-            if (_resolutionPrev != Resolution || _formatPrev != Format) {
-                _resolutionPrev = Resolution;
-                _formatPrev = Format;
+            if (_resolutionPrev != CookieResolution || _formatPrev != CookieFormat) {
+                _resolutionPrev = CookieResolution;
+                _formatPrev = CookieFormat;
                 GenerateCustomTexturesArray();
             }
             if (_shadowResolutionPrev != ShadowResolution || _shadowFormatPrev != ShadowFormat) {
@@ -663,7 +663,7 @@ namespace VRCLightVolumes {
                 _lightVolumeManagerBehaviour.SetProgramVariable("LightProbesBlending", LightProbesBlending);
                 _lightVolumeManagerBehaviour.SetProgramVariable("SharpBounds", SharpBounds);
                 _lightVolumeManagerBehaviour.SetProgramVariable("AdditiveMaxOverdraw", AdditiveMaxOverdraw);
-                _lightVolumeManagerBehaviour.SetProgramVariable("AreaLightBrightnessCutoff", LightsBrightnessCutoff);
+                _lightVolumeManagerBehaviour.SetProgramVariable("AreaLightBrightnessCutoff", BrightnessCutoff);
                 _lightVolumeManagerBehaviour.SetProgramVariable("ShadowResolution", (float)ShadowResolution);
                 _lightVolumeManagerBehaviour.SetProgramVariable("ForceSceneLighting", ForceSceneLighting);
 
@@ -692,7 +692,7 @@ namespace VRCLightVolumes {
                 LightVolumeManager.LightProbesBlending = LightProbesBlending;
                 LightVolumeManager.SharpBounds = SharpBounds;
                 LightVolumeManager.AdditiveMaxOverdraw = AdditiveMaxOverdraw;
-                LightVolumeManager.LightsBrightnessCutoff = LightsBrightnessCutoff;
+                LightVolumeManager.LightsBrightnessCutoff = BrightnessCutoff;
                 LightVolumeManager.ShadowResolution = (float)ShadowResolution;
                 LightVolumeManager.ForceSceneLighting = ForceSceneLighting;
 

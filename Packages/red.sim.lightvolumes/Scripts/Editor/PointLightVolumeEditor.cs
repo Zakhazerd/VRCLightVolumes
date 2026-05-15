@@ -26,8 +26,8 @@ namespace VRCLightVolumes {
             hiddenFields.Add("ShadowMap");
             hiddenFields.Add("RebakeShadows");
             hiddenFields.Add("SoftShadows");
-            hiddenFields.Add("ShadowBias");
-            hiddenFields.Add("ShadowBiasSmoothness");
+            hiddenFields.Add("Bias");
+            hiddenFields.Add("BiasSmoothness");
             hiddenFields.Add("UseWorldSpace");
             
             if(PointLightVolume.Type == PointLightVolume.LightType.PointLight) {
@@ -78,8 +78,8 @@ namespace VRCLightVolumes {
 
             if (shadowMapProperty.hasMultipleDifferentValues || shadowMapProperty.objectReferenceValue != null) {
                 EditorGUILayout.PropertyField(serializedObject.FindProperty("SoftShadows"));
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("ShadowBias"));
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("ShadowBiasSmoothness"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("Bias"));
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("BiasSmoothness"));
                 SerializedProperty useWorldSpaceProperty = serializedObject.FindProperty("UseWorldSpace");
                 EditorGUILayout.PropertyField(useWorldSpaceProperty, _useWorldSpaceContent);
             }
@@ -145,7 +145,7 @@ namespace VRCLightVolumes {
                 bool isDebug = pointLightVolume.DebugRange && (pointLightVolume.Shape != PointLightVolume.LightShape.LUT || pointLightVolume.FalloffLUT == null);
 
                 if (isDebug) {
-                    bounds = Mathf.Sqrt(ComputePointLightSquaredBoundingSphere(pointLightVolume.Color, pointLightVolume.Intensity, range, pointLightVolume.LightVolumeSetup.LightsBrightnessCutoff));
+                    bounds = Mathf.Sqrt(ComputePointLightSquaredBoundingSphere(pointLightVolume.Color, pointLightVolume.Intensity, range, pointLightVolume.LightVolumeSetup.BrightnessCutoff));
                 }
 
                 // Drawing
@@ -181,7 +181,7 @@ namespace VRCLightVolumes {
                 bool isDebug = pointLightVolume.DebugRange && (pointLightVolume.Shape != PointLightVolume.LightShape.LUT || pointLightVolume.FalloffLUT == null);
 
                 if (isDebug) {
-                    bounds = Mathf.Sqrt(ComputePointLightSquaredBoundingSphere(pointLightVolume.Color, pointLightVolume.Intensity, range, pointLightVolume.LightVolumeSetup.LightsBrightnessCutoff));
+                    bounds = Mathf.Sqrt(ComputePointLightSquaredBoundingSphere(pointLightVolume.Color, pointLightVolume.Intensity, range, pointLightVolume.LightVolumeSetup.BrightnessCutoff));
                 }
 
                 // Drawing
@@ -211,14 +211,14 @@ namespace VRCLightVolumes {
                 DrawAreaLight(origin, t.rotation, x, y);
 
                 if(pointLightVolume.DebugRange)
-                    DrawAreaLightDebug(origin, t.rotation, x, y, pointLightVolume.Color, pointLightVolume.Intensity, pointLightVolume.LightVolumeSetup.LightsBrightnessCutoff);
+                    DrawAreaLightDebug(origin, t.rotation, x, y, pointLightVolume.Color, pointLightVolume.Intensity, pointLightVolume.LightVolumeSetup.BrightnessCutoff);
 
                 Handles.zTest = UnityEngine.Rendering.CompareFunction.Greater;
                 Handles.color = new Color(1f, 1f, 0f, 0.15f);
                 DrawAreaLight(origin, t.rotation, x, y);
 
                 if (pointLightVolume.DebugRange)
-                    DrawAreaLightDebug(origin, t.rotation, x, y, pointLightVolume.Color, pointLightVolume.Intensity, pointLightVolume.LightVolumeSetup.LightsBrightnessCutoff);
+                    DrawAreaLightDebug(origin, t.rotation, x, y, pointLightVolume.Color, pointLightVolume.Intensity, pointLightVolume.LightVolumeSetup.BrightnessCutoff);
 
             }
 

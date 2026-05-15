@@ -38,17 +38,15 @@ namespace VRCLightVolumes {
         public bool DebugRange = false;
 
         [Tooltip("Includes this light when shadow maps are re-baked from the Light Volume Setup manager.")]
-        [InspectorName("Rebake Shadows")] public bool RebakeShadows = false;
+        public bool RebakeShadows = true;
         [Tooltip("Enables 4-sample PCF filtering for this light's baked cubemap. Disable it for cheaper hard edges.")]
-        [InspectorName("Soft Shadows")] public bool SoftShadows = true;
+        public bool SoftShadows = true;
         [Tooltip("World-space bias in meters applied when comparing shaded points against this light's baked cubemap. Larger values reduce acne, but can detach contact edges.")]
-        [InspectorName("Bias")]
-        [Min(0)] public float ShadowBias = 0.03f;
+        [Min(0)] public float Bias = 0.03f;
         [Tooltip("World-space smoothing radius in meters around this light's bias threshold. 0 keeps the bias threshold sharp.")]
-        [InspectorName("Bias Smoothness")]
-        [Min(0)] public float ShadowBiasSmoothness = 0.02f;
+        [Min(0)] public float BiasSmoothness = 0.02f;
         [Tooltip("Enables World Space Shadows using the bake position. Disable for Local Space Shadows that move and rotate with this light.")]
-        [InspectorName("Use World Space")] public bool UseWorldSpace = false;
+        public bool UseWorldSpace = false;
 
         public int CustomID = 0;
         [HideInInspector] public int ShadowID = -1;
@@ -163,8 +161,8 @@ namespace VRCLightVolumes {
                 _pointLightVolumeBehaviour.SetProgramVariable("ShadowMapID", (float)GetShadowRuntimeID());
                 _pointLightVolumeBehaviour.SetProgramVariable("WorldSpaceShadows", UseWorldSpace);
                 _pointLightVolumeBehaviour.SetProgramVariable("SoftShadows", SoftShadows);
-                _pointLightVolumeBehaviour.SetProgramVariable("ShadowBias", ShadowBias);
-                _pointLightVolumeBehaviour.SetProgramVariable("ShadowBiasSmoothness", ShadowBiasSmoothness);
+                _pointLightVolumeBehaviour.SetProgramVariable("ShadowBias", Bias);
+                _pointLightVolumeBehaviour.SetProgramVariable("ShadowBiasSmoothness", BiasSmoothness);
                 _pointLightVolumeBehaviour.SetProgramVariable("ShadowBakePosition", PointLightVolumeInstance.ShadowBakePosition);
                 _pointLightVolumeBehaviour.SetProgramVariable("ShadowBakeRotation", PointLightVolumeInstance.ShadowBakeRotation);
                 // Udon does not support methods with parameters, so under the hood, it's just some global variables.
@@ -245,8 +243,8 @@ namespace VRCLightVolumes {
                 PointLightVolumeInstance.ShadowMapID = GetShadowRuntimeID();
                 PointLightVolumeInstance.WorldSpaceShadows = UseWorldSpace;
                 PointLightVolumeInstance.SoftShadows = SoftShadows;
-                PointLightVolumeInstance.ShadowBias = ShadowBias;
-                PointLightVolumeInstance.ShadowBiasSmoothness = ShadowBiasSmoothness;
+                PointLightVolumeInstance.ShadowBias = Bias;
+                PointLightVolumeInstance.ShadowBiasSmoothness = BiasSmoothness;
 
                 if (Type == LightType.PointLight) { // Point light
                     if (Shape == LightShape.Custom && Cubemap != null) {
@@ -337,7 +335,7 @@ namespace VRCLightVolumes {
         // Returns the editor-only far clip used by the shadow map bake.
         public float GetShadowFarClip() {
             float scale = GetAverageLossyScale();
-            float cutoff = LightVolumeSetup != null ? LightVolumeSetup.LightsBrightnessCutoff : 0.35f;
+            float cutoff = LightVolumeSetup != null ? LightVolumeSetup.BrightnessCutoff : 0.35f;
             if (Type == LightType.AreaLight) {
                 Vector3 lossyScale = transform.lossyScale;
                 float width = Mathf.Max(Mathf.Abs(lossyScale.x), 0.001f);
