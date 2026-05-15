@@ -37,15 +37,15 @@ namespace VRCLightVolumes {
         [Tooltip("Shows overdrawing range gizmo. Less point light volumes intersections - more performance!")]
         public bool DebugRange = false;
 
-        [Tooltip("Includes this light when shadow maps are re-baked from the Light Volume Setup manager.")]
-        public bool RebakeShadows = true;
-        [Tooltip("Enables 4-sample PCF filtering for this light's baked cubemap. Disable it for cheaper hard edges.")]
+        [Tooltip("Rebakes shadows for this point light automatically when you click \"Bake Shadows\" in Light Volume Setup. Alternatively, you can bake it manually pressing the \"Bake Shadows\" button here.")]
+        public bool RebakeShadows = false;
+        [Tooltip("Enables 4-sample PCF filtering for this light's baked cubemap. Also reduces artefacts. Disable it for cheaper hard edges.")]
         public bool SoftShadows = true;
-        [Tooltip("World-space bias in meters applied when comparing shaded points against this light's baked cubemap. Larger values reduce acne, but can detach contact edges.")]
-        [Min(0)] public float Bias = 0.03f;
-        [Tooltip("World-space smoothing radius in meters around this light's bias threshold. 0 keeps the bias threshold sharp.")]
-        [Min(0)] public float BiasSmoothness = 0.02f;
-        [Tooltip("Enables World Space Shadows using the bake position. Disable for Local Space Shadows that move and rotate with this light.")]
+        [Tooltip("World-space bias in meters applied when comparing shaded points against this light's baked cubemap. Larger values reduce artifacts, but can detach contact edges.")]
+        [Min(0)] public float Bias = 0.1f;
+        [Tooltip("World-space smoothing radius in meters around this light's bias threshold. Larger values reduce artifacts, but can detach contact edges.")]
+        [Min(0)] public float BiasSmoothness = 0.25f;
+        [Tooltip("Use it if you don't want to move baked shadows together with their light. Attaches shadows to the world space basically. Less optimized when turned on.")]
         public bool UseWorldSpace = false;
 
         public int CustomID = 0;

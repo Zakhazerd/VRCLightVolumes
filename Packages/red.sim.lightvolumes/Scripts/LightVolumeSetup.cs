@@ -86,7 +86,9 @@ namespace VRCLightVolumes {
             public Action Update;
         }
 
-        [Tooltip("Render Textures that will be applied top to bottom to the Light Volume Atlas at runtime. External scripts can register themselves here using `RegisterPostProcessorCRT`. You probably don't want to mess with this field manually.")]
+        //Render Textures that will be applied top to bottom to the Light Volume Atlas at runtime.
+        //External scripts can register themselves here using `RegisterPostProcessorCRT`.
+        //You probably don't want to mess with this field manually.
         public PostProcessor[] AtlasPostProcessors;
 
         public bool IsBakeryMode => BakingMode == Baking.Bakery; // Just a shortcut
