@@ -482,7 +482,7 @@ namespace VRCLightVolumes {
                 _prevPos = transform.position;
                 _prevRot = transform.rotation;
                 _prevScl = transform.localScale;
-                LightVolumeSetup.SyncUdonScript();
+                if (!Application.isPlaying) LightVolumeSetup.SyncUdonScript();
             }
 
             if (_isValidated) {

@@ -84,10 +84,12 @@ namespace VRCLightVolumes {
             public Material Mat;
             public string TextureName;
             public Action Update;
+            // Optional callback used by processors that need the previous texture without a material pass.
+            public Action<Texture> UpdateWithInput;
         }
 
         //Render Textures that will be applied top to bottom to the Light Volume Atlas at runtime.
-        //External scripts can register themselves here using `RegisterPostProcessorCRT`.
+        //External scripts can register themselves here using `RegisterPostProcessorCRT` or `RegisterPostProcessor`.
         //You probably don't want to mess with this field manually.
         public PostProcessor[] AtlasPostProcessors;
 
@@ -227,17 +229,11 @@ namespace VRCLightVolumes {
 
             if(_customTexPointVolumes.Count == 0) {
                 LightVolumeManager.CustomTexturesBase = null;
+                LightVolumeManager.CubemapsCount = 0;
+#if UDONSHARP
+                SyncCookieTextureMetadataToUdon(LightVolumeManager.CubemapsCount);
+#endif
                 UpdateCookiePostProcessors();
-#if UDONSHARP
-                if (Application.isPlaying) {
-                    _lightVolumeManagerBehaviour.SetProgramVariable("CustomTextures", LightVolumeManager.CustomTextures);
-                    _lightVolumeManagerBehaviour.SetProgramVariable("CubemapsCount", 0);
-                } else {
-#endif
-                    LightVolumeManager.CubemapsCount = 0;
-#if UDONSHARP
-                }
-#endif
                 SyncUdonScript();
                 return;
             }
@@ -258,17 +254,11 @@ namespace VRCLightVolumes {
                     }
                 }
                 LightVolumeManager.CustomTexturesBase = texArray;
+                LightVolumeManager.CubemapsCount = cubeTextures.Count;
+#if UDONSHARP
+                SyncCookieTextureMetadataToUdon(LightVolumeManager.CubemapsCount);
+#endif
                 UpdateCookiePostProcessors();
-#if UDONSHARP
-                if (Application.isPlaying) {
-                    _lightVolumeManagerBehaviour.SetProgramVariable("CustomTextures", LightVolumeManager.CustomTextures);
-                    _lightVolumeManagerBehaviour.SetProgramVariable("CubemapsCount", cubeTextures.Count);
-                } else {
-#endif
-                    LightVolumeManager.CubemapsCount = cubeTextures.Count;
-#if UDONSHARP
-                }
-#endif
                 if (texArray != null) LVUtils.SaveAsAssetDelayed(texArray, $"{Path.GetDirectoryName(SceneManager.GetActiveScene().path)}/{SceneManager.GetActiveScene().name}/VRCLightVolumes/PointLightVolumeArray.asset");
 
                 _generateTextureArrayCoroutine = null;
@@ -311,17 +301,12 @@ namespace VRCLightVolumes {
 
             if (_shadowVolumes.Count == 0) {
                 LightVolumeManager.ShadowTexturesBase = null;
+                LightVolumeManager.ShadowMapsCount = 0;
+                LightVolumeManager.ShadowResolution = (float)ShadowResolution;
+#if UDONSHARP
+                SyncShadowTextureMetadataToUdon(LightVolumeManager.ShadowMapsCount);
+#endif
                 UpdateShadowPostProcessors();
-#if UDONSHARP
-                if (Application.isPlaying) {
-                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowTextures", LightVolumeManager.ShadowTextures);
-                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowMapsCount", 0);
-                } else {
-#endif
-                    LightVolumeManager.ShadowMapsCount = 0;
-#if UDONSHARP
-                }
-#endif
                 SyncUdonScript();
                 return;
             }
@@ -344,19 +329,12 @@ namespace VRCLightVolumes {
                 }
                 if (texArray != null) texArray.filterMode = FilterMode.Point;
                 LightVolumeManager.ShadowTexturesBase = texArray;
+                LightVolumeManager.ShadowMapsCount = texArray != null ? texArray.depth / 6 : 0;
+                LightVolumeManager.ShadowResolution = (float)ShadowResolution;
+#if UDONSHARP
+                SyncShadowTextureMetadataToUdon(LightVolumeManager.ShadowMapsCount);
+#endif
                 UpdateShadowPostProcessors();
-#if UDONSHARP
-                if (Application.isPlaying) {
-                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowTextures", LightVolumeManager.ShadowTextures);
-                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowMapsCount", texArray != null ? texArray.depth / 6 : 0);
-                    _lightVolumeManagerBehaviour.SetProgramVariable("ShadowResolution", (float)ShadowResolution);
-                } else {
-#endif
-                    LightVolumeManager.ShadowMapsCount = texArray != null ? texArray.depth / 6 : 0;
-                    LightVolumeManager.ShadowResolution = (float)ShadowResolution;
-#if UDONSHARP
-                }
-#endif
                 if (texArray != null) {
                     string assetPath = $"{Path.GetDirectoryName(SceneManager.GetActiveScene().path)}/{SceneManager.GetActiveScene().name}/VRCLightVolumes/PointLightVolumeShadowArray.asset";
                     if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath) != null) {
@@ -671,6 +649,54 @@ namespace VRCLightVolumes {
 
 #endif
 
+#if UDONSHARP
+        // Syncs base atlas, cookie and shadow metadata to the Udon manager without touching active post processor outputs.
+        private void SyncBaseTextureMetadataToUdon() {
+            SyncManagerProgramVariable("LightVolumeAtlasBase", LightVolumeManager.LightVolumeAtlasBase);
+            SyncCookieTextureMetadataToUdon(LightVolumeManager.CubemapsCount);
+            SyncShadowTextureMetadataToUdon(LightVolumeManager.ShadowMapsCount);
+        }
+
+        // Syncs cookie base texture metadata to the Udon manager.
+        private void SyncCookieTextureMetadataToUdon(int cubemapsCount) {
+            SyncManagerProgramVariable("CustomTexturesBase", LightVolumeManager.CustomTexturesBase);
+            SyncManagerProgramVariable("CubemapsCount", cubemapsCount);
+        }
+
+        // Syncs shadow base texture metadata to the Udon manager.
+        private void SyncShadowTextureMetadataToUdon(int shadowMapsCount) {
+            SyncManagerProgramVariable("ShadowTexturesBase", LightVolumeManager.ShadowTexturesBase);
+            SyncManagerProgramVariable("ShadowMapsCount", shadowMapsCount);
+            SyncManagerProgramVariable("ShadowResolution", (float)ShadowResolution);
+        }
+
+        // Syncs one active texture output to the Udon manager.
+        private void SyncActiveTextureToUdon(string variableName, Texture texture) {
+            SyncManagerProgramVariable(variableName, texture);
+        }
+
+        // Sets a manager Udon program variable when running in play mode.
+        private void SyncManagerProgramVariable(string variableName, object value) {
+            if (!Application.isPlaying) return;
+#if UNITY_EDITOR
+            if (_lightVolumeManagerBehaviour == null) SetupDependencies();
+#endif
+            if (_lightVolumeManagerBehaviour == null) return;
+            _lightVolumeManagerBehaviour.SetProgramVariable(variableName, value);
+        }
+
+        // Requests a shader globals refresh on the Udon manager in play mode.
+        private bool UpdateUdonManagerVolumes() {
+            if (!Application.isPlaying) return false;
+#if UNITY_EDITOR
+            if (_lightVolumeManagerBehaviour == null) SetupDependencies();
+#endif
+            if (_lightVolumeManagerBehaviour == null) return false;
+            _lightVolumeManagerBehaviour.SendCustomEvent("UpdateVolumes");
+            return true;
+        }
+#endif
+
         // Syncs udon LightVolumeManager script with this script
         public void SyncUdonScript() {
 #if UNITY_EDITOR
@@ -688,6 +714,7 @@ namespace VRCLightVolumes {
                 _lightVolumeManagerBehaviour.SetProgramVariable("AreaLightBrightnessCutoff", BrightnessCutoff);
                 _lightVolumeManagerBehaviour.SetProgramVariable("ShadowResolution", (float)ShadowResolution);
                 _lightVolumeManagerBehaviour.SetProgramVariable("ForceSceneLighting", ForceSceneLighting);
+                SyncBaseTextureMetadataToUdon();
 
                 if (LightVolumes.Count != 0) {
                     var instances = LightVolumeDataSorter.GetData(LightVolumeDataSorter.SortData(LightVolumeDataList));
@@ -795,6 +822,11 @@ namespace VRCLightVolumes {
             UnregisterPostProcessor(ref AtlasPostProcessors, crt, "", UpdateAtlasPostProcessors);
         }
 
+        // Unregisters a post processor from the Light Volume 3D atlas.
+        public void UnregisterPostProcessor(PostProcessor pp) {
+            UnregisterPostProcessor(ref AtlasPostProcessors, pp, "", UpdateAtlasPostProcessors);
+        }
+
         // Registers a Render Texture post processor for the Light Volume 3D atlas.
         public void RegisterPostProcessor(PostProcessor pp) {
             RegisterPostProcessor(ref AtlasPostProcessors, pp, "", UpdateAtlasPostProcessors);
@@ -811,6 +843,11 @@ namespace VRCLightVolumes {
         // Unregisters a post processor from the Point Light Volume cookie texture array.
         public void UnregisterCookiePostProcessor(RenderTexture rt) {
             UnregisterPostProcessor(ref CookiePostProcessors, rt, "cookie", UpdateCookiePostProcessors);
+        }
+
+        // Unregisters a post processor from the Point Light Volume cookie texture array.
+        public void UnregisterCookiePostProcessor(PostProcessor pp) {
+            UnregisterPostProcessor(ref CookiePostProcessors, pp, "cookie", UpdateCookiePostProcessors);
         }
 
         // Registers a Render Texture post processor for the Point Light Volume cookie texture array.
@@ -831,6 +868,11 @@ namespace VRCLightVolumes {
             UnregisterPostProcessor(ref ShadowPostProcessors, rt, "shadow depth", UpdateShadowPostProcessors);
         }
 
+        // Unregisters a post processor from the Point Light Volume shadow depth array.
+        public void UnregisterShadowPostProcessor(PostProcessor pp) {
+            UnregisterPostProcessor(ref ShadowPostProcessors, pp, "shadow depth", UpdateShadowPostProcessors);
+        }
+
         // Registers a Render Texture post processor for the Point Light Volume shadow depth array.
         public void RegisterShadowPostProcessor(PostProcessor pp) {
             RegisterPostProcessor(ref ShadowPostProcessors, pp, "shadow depth", UpdateShadowPostProcessors);
@@ -839,48 +881,90 @@ namespace VRCLightVolumes {
         // Registers a Custom Render Texture post processor in a shared post processor list.
         private void RegisterPostProcessorCRT(ref PostProcessor[] postProcessors, CustomRenderTexture crt, string targetName, Action updatePostProcessors) {
             if (crt == null) return;
-            postProcessors ??= new PostProcessor[0];
-            if (ContainsPostProcessor(postProcessors, crt)) return;
-            Array.Resize(ref postProcessors, postProcessors.Length + 1);
-            postProcessors[^1] = new PostProcessor { RT = crt, Mat = crt.material, TextureName = "_MainTex", Update = crt.Update };
-            Debug.Log($"[LightVolumeSetup] Registered {GetPostProcessorLogName(targetName)} CRT: {crt.name}");
-            updatePostProcessors?.Invoke();
+            RegisterPostProcessor(ref postProcessors, new PostProcessor { RT = crt, Mat = crt.material, TextureName = "_MainTex", Update = crt.Update }, targetName, updatePostProcessors);
         }
 
         // Unregisters a post processor from a shared post processor list.
         private void UnregisterPostProcessor(ref PostProcessor[] postProcessors, RenderTexture rt, string targetName, Action updatePostProcessors) {
-            if (rt == null || postProcessors == null) return;
-            int index = Array.FindIndex(postProcessors, pp => pp.RT == rt);
-            if (index < 0) return;
-            PostProcessor[] newArray = new PostProcessor[postProcessors.Length - 1];
+            if (rt == null) return;
+            UnregisterPostProcessor(ref postProcessors, new PostProcessor { RT = rt }, targetName, updatePostProcessors);
+        }
+
+        // Unregisters a post processor from a shared post processor list.
+        private void UnregisterPostProcessor(ref PostProcessor[] postProcessors, PostProcessor pp, string targetName, Action updatePostProcessors) {
+            if (postProcessors == null) return;
+            int removeCount = 0;
+            RenderTexture removedRt = pp.RT;
+            for (int i = 0; i < postProcessors.Length; i++) {
+                if (!IsSamePostProcessor(postProcessors[i], pp)) continue;
+                if (removedRt == null) removedRt = postProcessors[i].RT;
+                removeCount++;
+            }
+            if (removeCount == 0) return;
+
+            PostProcessor[] newArray = new PostProcessor[postProcessors.Length - removeCount];
             for (int i = 0, j = 0; i < postProcessors.Length; i++) {
-                if (i != index) {
-                    newArray[j] = postProcessors[i];
-                    j++;
-                }
+                if (IsSamePostProcessor(postProcessors[i], pp)) continue;
+                newArray[j] = postProcessors[i];
+                j++;
             }
             postProcessors = newArray;
-            Debug.Log($"[LightVolumeSetup] Unregistered {GetPostProcessorLogName(targetName)}: {rt.name}");
+            Debug.Log($"[LightVolumeSetup] Unregistered {GetPostProcessorLogName(targetName)}: {(removedRt != null ? removedRt.name : "")}");
             updatePostProcessors?.Invoke();
         }
 
         // Registers a Render Texture post processor in a shared post processor list.
         private void RegisterPostProcessor(ref PostProcessor[] postProcessors, PostProcessor pp, string targetName, Action updatePostProcessors) {
-            if (pp.RT == null || pp.Mat == null) return;
-            postProcessors ??= new PostProcessor[0];
-            if (ContainsPostProcessor(postProcessors, pp.RT)) return;
+            if (pp.RT == null || (pp.Mat == null && pp.Update == null && pp.UpdateWithInput == null)) return;
+            if (postProcessors == null) postProcessors = new PostProcessor[0];
             if (string.IsNullOrEmpty(pp.TextureName)) pp.TextureName = "_MainTex";
+            int index = FindPostProcessorIndex(postProcessors, pp);
+            if (index >= 0) {
+                bool changed = postProcessors[index].RT != pp.RT || postProcessors[index].Mat != pp.Mat || postProcessors[index].TextureName != pp.TextureName || postProcessors[index].Update != pp.Update || postProcessors[index].UpdateWithInput != pp.UpdateWithInput;
+                postProcessors[index] = pp;
+                bool removedDuplicates = RemoveDuplicatePostProcessors(ref postProcessors, pp, index);
+                if (!changed && !removedDuplicates) return;
+                Debug.Log($"[LightVolumeSetup] Updated {GetPostProcessorLogName(targetName)}: {pp.RT.name}");
+                updatePostProcessors?.Invoke();
+                return;
+            }
             Array.Resize(ref postProcessors, postProcessors.Length + 1);
-            postProcessors[^1] = pp;
+            postProcessors[postProcessors.Length - 1] = pp;
             Debug.Log($"[LightVolumeSetup] Registered {GetPostProcessorLogName(targetName)}: {pp.RT.name}");
             updatePostProcessors?.Invoke();
         }
 
-        // Checks if a post processor render target is already registered.
-        private static bool ContainsPostProcessor(PostProcessor[] postProcessors, RenderTexture rt) {
+        // Finds a post processor by render target or callback identity.
+        private static int FindPostProcessorIndex(PostProcessor[] postProcessors, PostProcessor pp) {
             for (int i = 0; i < postProcessors.Length; i++) {
-                if (postProcessors[i].RT == rt) return true;
+                if (IsSamePostProcessor(postProcessors[i], pp)) return i;
             }
+            return -1;
+        }
+
+        // Removes duplicate registrations that point to the same render target or callback.
+        private static bool RemoveDuplicatePostProcessors(ref PostProcessor[] postProcessors, PostProcessor pp, int keepIndex) {
+            int duplicateCount = 0;
+            for (int i = 0; i < postProcessors.Length; i++) {
+                if (i != keepIndex && IsSamePostProcessor(postProcessors[i], pp)) duplicateCount++;
+            }
+            if (duplicateCount == 0) return false;
+
+            PostProcessor[] newArray = new PostProcessor[postProcessors.Length - duplicateCount];
+            for (int i = 0, j = 0; i < postProcessors.Length; i++) {
+                if (i != keepIndex && IsSamePostProcessor(postProcessors[i], pp)) continue;
+                newArray[j] = postProcessors[i];
+                j++;
+            }
+            postProcessors = newArray;
+            return true;
+        }
+
+        // Checks if an existing post processor matches a requested registration.
+        private static bool IsSamePostProcessor(PostProcessor existing, PostProcessor requested) {
+            if (requested.RT != null && existing.RT == requested.RT) return true;
+            if (requested.Update != null && existing.Update == requested.Update) return true;
+            if (requested.UpdateWithInput != null && existing.UpdateWithInput == requested.UpdateWithInput) return true;
             return false;
         }
 
@@ -898,6 +982,11 @@ namespace VRCLightVolumes {
                 UnityEngine.Rendering.TextureDimension.Tex3D,
                 UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_SFloat,
                 FilterMode.Trilinear);
+#if UDONSHARP
+            SyncActiveTextureToUdon("LightVolumeAtlas", LightVolumeManager.LightVolumeAtlas);
+            if (UpdateUdonManagerVolumes()) return;
+#endif
+            LightVolumeManager.UpdateVolumes();
         }
 
         // Updates the Point Light Volume cookie texture array post processor chain and stores its active output.
@@ -909,6 +998,11 @@ namespace VRCLightVolumes {
                 UnityEngine.Rendering.TextureDimension.Tex2DArray,
                 UnityEngine.Experimental.Rendering.GraphicsFormatUtility.GetGraphicsFormat((TextureFormat)CookieFormat, true),
                 FilterMode.Trilinear);
+#if UDONSHARP
+            SyncActiveTextureToUdon("CustomTextures", LightVolumeManager.CustomTextures);
+            if (UpdateUdonManagerVolumes()) return;
+#endif
+            LightVolumeManager.UpdateVolumes();
         }
 
         // Updates the Point Light Volume shadow depth array post processor chain and stores its active output.
@@ -920,6 +1014,11 @@ namespace VRCLightVolumes {
                 UnityEngine.Rendering.TextureDimension.Tex2DArray,
                 UnityEngine.Experimental.Rendering.GraphicsFormatUtility.GetGraphicsFormat(GetShadowTextureFormat(), true),
                 FilterMode.Point);
+#if UDONSHARP
+            SyncActiveTextureToUdon("ShadowTextures", LightVolumeManager.ShadowTextures);
+            if (UpdateUdonManagerVolumes()) return;
+#endif
+            LightVolumeManager.UpdateVolumes();
         }
 
         // Applies a post processor chain to a base texture and returns the last valid output.
@@ -932,16 +1031,18 @@ namespace VRCLightVolumes {
                 PostProcessor pp = postProcessors[i];
                 RenderTexture rt = pp.RT;
                 Material mat = pp.Mat;
-                if (rt == null || mat == null) continue;
+                if (rt == null || (mat == null && pp.Update == null && pp.UpdateWithInput == null)) continue;
 
                 SetupPostProcessorRenderTexture(rt, baseTexture, dimension, graphicsFormat, filterMode);
 
+                Texture inputTexture = prevTexture;
                 string textureName = string.IsNullOrEmpty(pp.TextureName) ? "_MainTex" : pp.TextureName;
-                mat.SetTexture(textureName, prevTexture);
+                if (mat != null) mat.SetTexture(textureName, inputTexture);
                 prevTexture = rt;
                 hasValidProcessor = true;
 
-                pp.Update?.Invoke();
+                if (pp.UpdateWithInput != null) pp.UpdateWithInput(inputTexture);
+                else pp.Update?.Invoke();
             }
 
             return hasValidProcessor ? prevTexture : baseTexture;
@@ -949,6 +1050,7 @@ namespace VRCLightVolumes {
 
         // Enforces dimensions and format on a post processor render target before running its update.
         private static void SetupPostProcessorRenderTexture(RenderTexture rt, Texture baseTexture, UnityEngine.Rendering.TextureDimension dimension, UnityEngine.Experimental.Rendering.GraphicsFormat graphicsFormat, FilterMode filterMode) {
+            RenderTexture.active = null;
             rt.Release();
             rt.dimension = dimension;
             rt.graphicsFormat = graphicsFormat;
