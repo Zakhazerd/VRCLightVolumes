@@ -269,10 +269,10 @@ namespace VRCLightVolumes {
                 var tex = _lightVolumeSetup.LightVolumeManager.LightVolumeAtlasBase;
                 vCount = (ulong)tex.width * (ulong)tex.height * (ulong)tex.depth;
 
-                if (_lightVolumeSetup.LightVolumeManager.AtlasPostProcessors != null) {
-                    foreach (var crt in _lightVolumeSetup.LightVolumeManager.AtlasPostProcessors) {
-                        if (crt != null) {
-                            vCount += (ulong)crt.width * (ulong)crt.height * (ulong)crt.volumeDepth;
+                if (_lightVolumeSetup.AtlasPostProcessors != null) {
+                    foreach (var pp in _lightVolumeSetup.AtlasPostProcessors) {
+                        if (pp.RT != null) {
+                            vCount += (ulong)pp.RT.width * (ulong)pp.RT.height * (ulong)pp.RT.volumeDepth;
                         }
                     }
                 }
