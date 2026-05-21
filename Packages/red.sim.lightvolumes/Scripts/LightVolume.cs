@@ -430,18 +430,18 @@ namespace VRCLightVolumes {
             SetupDependencies();
 #if UDONSHARP
             if (Application.isPlaying) {
-                // To sync variables in play-mode, we need to do it directly to the UdonBehaviour
+                // To sync variables in play mode, write directly to the UdonBehaviour
                 _lightVolumeBehaviour.SetProgramVariable("IsDynamic", Dynamic);
                 _lightVolumeBehaviour.SetProgramVariable("IsAdditive", Additive);
                 _lightVolumeBehaviour.SetProgramVariable("Color", Color);
                 _lightVolumeBehaviour.SetProgramVariable("Intensity", Intensity);
-                // Udon does not support methods with parameters, so under the hood, it's just some global variables.
-                // We can first set these parameters and then exetute a parameterless method.
+                // Udon does not support parameterized methods, so the values are passed through temporary program variables
+                // Set the parameters first, then execute a parameterless method
                 _lightVolumeBehaviour.SetProgramVariable("__0_radius__param", SmoothBlending);
                 _lightVolumeBehaviour.SendCustomEvent("__0_SetSmoothBlending");
             } else {
 #endif
-                LightVolumeInstance.IsInitialized = true; // Always override to true in editor with no play mode!
+                LightVolumeInstance.IsInitialized = true; // Always override to true in editor outside play mode
                 LightVolumeInstance.LightVolumeManager = LightVolumeSetup.LightVolumeManager;
 
                 LightVolumeInstance.IsDynamic = Dynamic;

@@ -2,11 +2,13 @@ using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace VRCLightVolumes.Tests {
+    [Category("Udon")]
     public class LightVolumeUdonEditorTests {
         private const float Epsilon = 0.0001f;
-        private const float ShadowSoftBiasEncodingEpsilon = 0.000001f;
+        private const string CustomRenderTextureInfoProperty = "_CustomRenderTextureInfo";
 
         private static readonly int _lightVolumeInvLocalEdgeSmoothID = Shader.PropertyToID("_UdonLightVolumeInvLocalEdgeSmooth");
         private static readonly int _lightVolumeColorID = Shader.PropertyToID("_UdonLightVolumeColor");
@@ -25,12 +27,19 @@ namespace VRCLightVolumes.Tests {
         private static readonly int _pointLightCustomIdID = Shader.PropertyToID("_UdonPointLightVolumeCustomID");
         private static readonly int _pointLightCountID = Shader.PropertyToID("_UdonPointLightVolumeCount");
         private static readonly int _pointLightCubeCountID = Shader.PropertyToID("_UdonPointLightVolumeCubeCount");
+        private static readonly int _pointLightTextureID = Shader.PropertyToID("_UdonPointLightVolumeTexture");
         private static readonly int _pointLightShadowDataID = Shader.PropertyToID("_UdonPointLightVolumeShadowData");
         private static readonly int _pointLightShadowReprojectionDataID = Shader.PropertyToID("_UdonPointLightVolumeShadowReprojectionData");
         private static readonly int _pointLightShadowCountID = Shader.PropertyToID("_UdonPointLightVolumeShadowCount");
+        private static readonly int _pointLightShadowTextureID = Shader.PropertyToID("_UdonPointLightVolumeShadowTexture");
         private static readonly int _pointLightShadowResolutionID = Shader.PropertyToID("_UdonPointLightVolumeShadowResolution");
         private static readonly int _lightBrightnessCutoffID = Shader.PropertyToID("_UdonLightBrightnessCutoff");
         private static readonly BindingFlags _lifecycleMethodFlags = BindingFlags.Instance | BindingFlags.NonPublic;
+        private static readonly FieldInfo _customTexturesDepthField = typeof(LightVolumeManager).GetField("_customTexturesDepth", _lifecycleMethodFlags);
+        private static readonly FieldInfo _shadowTexturesDepthField = typeof(LightVolumeManager).GetField("_shadowTexturesDepth", _lifecycleMethodFlags);
+        private static readonly FieldInfo _customCubemapTexturesField = typeof(LightVolumeManager).GetField("_customCubemapTextures", _lifecycleMethodFlags);
+        private static readonly FieldInfo _customSingleTexturesField = typeof(LightVolumeManager).GetField("_customSingleTextures", _lifecycleMethodFlags);
+        private static readonly FieldInfo _pointLightCustomIDsField = typeof(LightVolumeManager).GetField("_pointLightCustomIDs", _lifecycleMethodFlags);
 
         private readonly List<UnityEngine.Object> _createdObjects = new List<UnityEngine.Object>();
 
@@ -48,6 +57,16 @@ namespace VRCLightVolumes.Tests {
                 DestroyTestObject(_createdObjects[i]);
             }
             _createdObjects.Clear();
+        }
+
+        // Returns a private LightVolumeManager field used by focused regression tests.
+        private static T GetManagerField<T>(LightVolumeManager manager, FieldInfo field) {
+            return (T)field.GetValue(manager);
+        }
+
+        // Assigns a private LightVolumeManager field used by focused regression tests.
+        private static void SetManagerField<T>(LightVolumeManager manager, FieldInfo field, T value) {
+            field.SetValue(manager, value);
         }
 
         // Verifies that corrupted serialized registry arrays are repaired instead of throwing.
@@ -340,7 +359,7 @@ namespace VRCLightVolumes.Tests {
             point.transform.rotation = Quaternion.Euler(0, 90, 0);
             point.transform.localScale = new Vector3(1.5f, 1.5f, 1.5f);
             point.PositionData = new Vector4(0, 0, 0, 3);
-            point.SetCustomTexture(0);
+            point.SetCustomTexture();
             manager.LightVolumeInstances = new[] { volume };
             manager.PointLightVolumeInstances = new[] { point };
 
@@ -386,11 +405,8 @@ namespace VRCLightVolumes.Tests {
         [Test]
         public void PointLightGlobalsWorldSpaceShadowAndCutoffChanges() {
             LightVolumeManager manager = CreateManager("Point Globals Manager", false);
-            manager.CubemapsCount = 4;
-            manager.ShadowMapsCount = 3;
-            manager.ShadowResolution = 256;
-            manager.CustomTextures = CreateTexture2D("Custom Texture Array");
-            manager.ShadowTextures = CreateTexture2D("Shadow Texture Array");
+            manager.ShadowTexturesWidth = 256;
+            manager.ShadowTexturesHeight = 256;
             manager.LightsBrightnessCutoff = 0.2f;
 
             PointLightVolumeInstance point = CreatePointLight(manager, "Point Light", true);
@@ -408,8 +424,8 @@ namespace VRCLightVolumes.Tests {
 
             AssertGlobalFloat(_lightVolumeEnabledID, 1);
             AssertGlobalFloat(_pointLightCountID, 1);
-            AssertGlobalFloat(_pointLightCubeCountID, 4);
-            AssertGlobalFloat(_pointLightShadowResolutionID, 256);
+            AssertGlobalFloat(_pointLightCubeCountID, 0);
+            AssertVectorClose(new Vector4(256, 256, 0, 0), Shader.GetGlobalVector(_pointLightShadowResolutionID));
             AssertGlobalFloat(_lightBrightnessCutoffID, 0.2f);
             AssertVectorClose(new Vector4(2, 3, 4, 4), Shader.GetGlobalVectorArray(_pointLightPositionID)[0]);
             AssertVectorClose(ExpectedPointLightColor(point), Shader.GetGlobalVectorArray(_pointLightColorID)[0]);
@@ -422,18 +438,20 @@ namespace VRCLightVolumes.Tests {
             AssertGlobalFloat(_pointLightCountID, 0);
 
             point.SetColor(new Color(1, 0.5f, 0.25f, 1));
-            point.ShadowMapID = 1;
+            ConfigureShadowTexture(point, CreateCubemap("Point Globals Shadow Source"), false, true, false);
             point.WorldSpaceShadows = true;
-            point.SoftShadows = false;
             point.ShadowBias = -1;
             point.ShadowBiasSmoothness = -0.25f;
+            point.ShadowSharpness = 0.35f;
             point.ShadowBakePosition = new Vector3(5, 6, 7);
+            manager.PointLightVolumeInstances = new[] { point };
+            manager.ReinitializeShadowTextures();
 
             manager.UpdateVolumes();
 
-            AssertGlobalFloat(_pointLightShadowCountID, 3);
+            AssertGlobalFloat(_pointLightShadowCountID, 1);
             AssertPointCustomData(point, 0, 0);
-            AssertVectorClose(new Vector4(2, 0, 0, 0), Shader.GetGlobalVectorArray(_pointLightShadowDataID)[0]);
+            AssertVectorClose(new Vector4(1, 0, 0, 0.35f), Shader.GetGlobalVectorArray(_pointLightShadowDataID)[0]);
             AssertVectorClose(new Vector4(5, 6, 7, 1), Shader.GetGlobalVectorArray(_pointLightShadowReprojectionDataID)[0]);
 
             point.WorldSpaceShadows = false;
@@ -443,26 +461,30 @@ namespace VRCLightVolumes.Tests {
 
             Quaternion expectedLocalSpaceRotation = point.ShadowBakeRotation * Quaternion.Inverse(point.transform.rotation);
             AssertPointCustomData(point, 0, 0);
-            AssertVectorClose(new Vector4(-2, 0, 0, 0), Shader.GetGlobalVectorArray(_pointLightShadowDataID)[0]);
+            AssertVectorClose(new Vector4(-1, 0, 0, 0.35f), Shader.GetGlobalVectorArray(_pointLightShadowDataID)[0]);
             AssertVectorClose(new Vector4(expectedLocalSpaceRotation.x, expectedLocalSpaceRotation.y, expectedLocalSpaceRotation.z, expectedLocalSpaceRotation.w), Shader.GetGlobalVectorArray(_pointLightShadowReprojectionDataID)[0]);
 
-            point.SetLut(2);
+            point.CustomTexture = CreateTexture2D("Point Globals LUT");
+            point.ProjectionType = 1; // 1: texture
+            point.SetLut();
             point.SetLightSourceSize(5);
 
+            manager.ReinitializeCustomTextures();
             manager.UpdateVolumes();
 
             Assert.That(point.IsLut(), Is.True);
-            AssertPointCustomData(point, 3, 0);
+            AssertPointCustomData(point, 1, 0);
             AssertVectorClose(new Vector4(2, 3, 4, point.PositionData.w / point.SquaredScale), Shader.GetGlobalVectorArray(_pointLightPositionID)[0]);
 
-            point.SetCustomTexture(1);
+            point.SetCustomTexture();
             point.SetSpotLight(60, 0.25f);
 
+            manager.ReinitializeCustomTextures();
             manager.UpdateVolumes();
 
             Quaternion expectedCookieRotation = Quaternion.Inverse(point.transform.rotation);
             Assert.That(point.IsSpotLight(), Is.True);
-            AssertPointCustomData(point, -2, 0);
+            AssertPointCustomData(point, -1, 0);
             AssertVectorClose(ExpectedPointLightColor(point), Shader.GetGlobalVectorArray(_pointLightColorID)[0]);
             AssertVectorClose(new Vector4(expectedCookieRotation.x, expectedCookieRotation.y, expectedCookieRotation.z, expectedCookieRotation.w), Shader.GetGlobalVectorArray(_pointLightDirectionID)[0]);
 
@@ -492,8 +514,6 @@ namespace VRCLightVolumes.Tests {
         public void AllPointLightsWithCubemapProjectionWriteProjectionGlobals() {
             LightVolumeManager manager = CreateManager("All Cubemap Projection Manager", false);
             const int pointCount = 8;
-            manager.CubemapsCount = pointCount;
-            manager.CustomTextures = CreateTexture2D("All Cubemap Projection Texture Array");
             PointLightVolumeInstance[] points = new PointLightVolumeInstance[pointCount];
 
             for (int i = 0; i < pointCount; i++) {
@@ -501,7 +521,10 @@ namespace VRCLightVolumes.Tests {
                 point.transform.position = new Vector3(i, i + 1, i + 2);
                 point.transform.rotation = Quaternion.Euler(i * 5, i * 7, i * 11);
                 point.PositionData = new Vector4(0, 0, 0, i + 1);
-                point.SetCustomTexture(i);
+                point.CustomTexture = CreateCubemap("Cubemap Projection Source " + i);
+                point.CustomTextureIsCubemap = true;
+                point.ProjectionType = 1; // 1: texture
+                point.SetCustomTexture();
                 points[i] = point;
             }
             manager.PointLightVolumeInstances = points;
@@ -521,21 +544,419 @@ namespace VRCLightVolumes.Tests {
             }
         }
 
+        // Verifies native spot cookies create a manager-owned runtime texture array and shader ID
+        [Test]
+        public void SpotCookieCreatesRuntimeArrayAndShaderId() {
+            LightVolumeManager manager = CreateManager("Spot Cookie Runtime Manager", false);
+            RenderTexture source = CreateRenderTexture("Animated Spot Cookie Source", 4, 4, 1, TextureDimension.Tex2D);
+            manager.CustomTexturesWidth = 4;
+            manager.CustomTexturesHeight = 4;
+
+            PointLightVolumeInstance point = CreatePointLight(manager, "Animated Spot Cookie Light", true);
+            point.SetCustomTexture();
+            point.SetSpotLight(60, 0.5f);
+            point.CustomTexture = source;
+            point.ProjectionType = 1; // 1: texture
+            point.CustomTextureIsRenderTexture = true;
+            point.AutoUpdateCustomTexture = true;
+            manager.PointLightVolumeInstances = new[] { point };
+
+            manager.ReinitializeCustomTextures();
+            manager.UpdateVolumes();
+
+            Assert.That(manager.CustomTextures, Is.Not.Null);
+            Assert.That(manager.CustomTextures.dimension, Is.EqualTo(TextureDimension.Tex2DArray));
+            Assert.That(manager.CustomTextures.width, Is.EqualTo(4));
+            Assert.That(manager.CustomTextures.height, Is.EqualTo(4));
+            Assert.That(manager.CustomTextures.volumeDepth, Is.EqualTo(1));
+            Assert.That(manager.CustomTextures.format, Is.EqualTo(RenderTextureFormat.ARGBHalf));
+            AssertPointCustomData(point, -1, 1);
+        }
+
+        // Verifies the runtime API assigns a texture source and refreshes manager-owned projection arrays
+        [Test]
+        public void CustomTextureApiAssignsTextureAndRefreshesRuntimeArray() {
+            LightVolumeManager manager = CreateManager("Custom Texture API Manager", false);
+            RenderTexture source = CreateRenderTexture("Custom Texture API Source", 4, 4, 1, TextureDimension.Tex2D);
+            manager.CustomTexturesWidth = 4;
+            manager.CustomTexturesHeight = 4;
+
+            PointLightVolumeInstance point = CreatePointLight(manager, "Custom Texture API Spot", true);
+            point.SetSpotLight(60, 0.5f);
+            point.SetCustomTexture(source, false, true);
+            InvokeLifecycleMethod(manager, "Update");
+
+            Assert.That(point.CustomTexture, Is.SameAs(source));
+            Assert.That(point.CustomTextureMaterial, Is.Null);
+            Assert.That(point.ProjectionType, Is.EqualTo(1)); // 1: texture
+            Assert.That(point.ProjectionMode, Is.EqualTo(2)); // 2: custom cookie or cubemap
+            Assert.That(point.AutoUpdateCustomTexture, Is.True);
+            Assert.That(point.CustomTextureIsRenderTexture, Is.True);
+            Assert.That(point.CustomTextureIsCubemap, Is.False);
+            Assert.That(point.CustomTextureHasDepthSlices, Is.False);
+            Assert.That(manager.CustomTextures, Is.Not.Null);
+            Assert.That(Shader.GetGlobalTexture(_pointLightTextureID), Is.SameAs(manager.CustomTextures));
+            Assert.That(manager.CustomTextures.volumeDepth, Is.EqualTo(1));
+            AssertPointCustomData(point, -1, 1);
+
+            point.SetCustomTexture(null, false, false);
+
+            Assert.That(point.CustomTexture, Is.Null);
+            Assert.That(point.ProjectionType, Is.EqualTo(0)); // 0: none
+            Assert.That(point.ProjectionMode, Is.EqualTo(0)); // 0: parametric
+            Assert.That(manager.CustomTextures, Is.Null);
+        }
+
+        // Verifies the runtime API uses isCubemap to mark cubemap texture sources
+        [Test]
+        public void CustomTextureApiMarksCubemapSources() {
+            LightVolumeManager manager = CreateManager("Custom Texture API Cubemap Manager", false);
+            Cubemap source = CreateCubemap("Custom Texture API Cubemap Source");
+            manager.CustomTexturesWidth = 4;
+            manager.CustomTexturesHeight = 4;
+
+            PointLightVolumeInstance point = CreatePointLight(manager, "Custom Texture API Point", true);
+            point.SetCustomTexture(source, true, true);
+            InvokeLifecycleMethod(manager, "Update");
+
+            Assert.That(point.CustomTexture, Is.SameAs(source));
+            Assert.That(point.CustomTextureIsCubemap, Is.True);
+            Assert.That(point.CustomTextureHasDepthSlices, Is.False);
+            Assert.That(manager.CustomTextures, Is.Not.Null);
+            Assert.That(manager.CubemapsCount, Is.EqualTo(1));
+            Assert.That(manager.CustomTextures.volumeDepth, Is.EqualTo(6));
+            AssertPointCustomData(point, -1, 1);
+        }
+
+        // Verifies the runtime API assigns a material source and refreshes manager-owned projection arrays
+        [Test]
+        public void CustomMaterialApiAssignsMaterialAndRefreshesRuntimeArray() {
+            LightVolumeManager manager = CreateManager("Custom Material API Manager", false);
+            Material material = CreateMaterial("Hidden/CubeFace");
+            manager.CustomTexturesWidth = 4;
+            manager.CustomTexturesHeight = 4;
+
+            PointLightVolumeInstance firstPoint = CreatePointLight(manager, "Material API Point A", true);
+            firstPoint.SetCustomMaterial(material, true);
+
+            PointLightVolumeInstance duplicatePoint = CreatePointLight(manager, "Material API Point B", true);
+            duplicatePoint.SetCustomMaterial(material, true);
+
+            Assert.That(firstPoint.CustomTexture, Is.Null);
+            Assert.That(firstPoint.CustomTextureMaterial, Is.SameAs(material));
+            Assert.That(firstPoint.ProjectionType, Is.EqualTo(2)); // 2: material
+            Assert.That(firstPoint.ProjectionMode, Is.EqualTo(2)); // 2: custom cookie or cubemap
+            Assert.That(firstPoint.AutoUpdateCustomTexture, Is.True);
+
+            manager.UpdateVolumes();
+
+            Assert.That(manager.CubemapsCount, Is.EqualTo(1));
+            Assert.That(manager.CustomTextures, Is.Not.Null);
+            Assert.That(manager.CustomTextures.volumeDepth, Is.EqualTo(6));
+            Assert.That(GetManagerField<int[]>(manager, _pointLightCustomIDsField), Is.EqualTo(new[] { 0, 0 }));
+            AssertPointCustomData(0, firstPoint, -1, 2);
+            AssertPointCustomData(1, duplicatePoint, -1, 2);
+        }
+
+        // Verifies runtime cookie size comes from the manager setting, not from the source texture
+        [Test]
+        public void SpotCookieRuntimeArrayUsesConfiguredSize() {
+            LightVolumeManager manager = CreateManager("Spot Cookie Configured Size Manager", false);
+            RenderTexture source = CreateRenderTexture("Animated Spot Cookie No Fallback Source", 8, 4, 1, TextureDimension.Tex2D);
+            manager.CustomTexturesWidth = 16;
+            manager.CustomTexturesHeight = 8;
+
+            PointLightVolumeInstance point = CreatePointLight(manager, "Animated Spot Cookie No Fallback Light", true);
+            point.SetCustomTexture();
+            point.SetSpotLight(60, 0.5f);
+            point.CustomTexture = source;
+            point.ProjectionType = 1; // 1: texture
+            point.CustomTextureIsRenderTexture = true;
+            point.AutoUpdateCustomTexture = true;
+            manager.PointLightVolumeInstances = new[] { point };
+
+            manager.ReinitializeCustomTextures();
+            manager.UpdateVolumes();
+
+            Assert.That(manager.CustomTextures, Is.Not.Null);
+            Assert.That(Shader.GetGlobalTexture(_pointLightTextureID), Is.SameAs(manager.CustomTextures));
+            Assert.That(manager.CustomTextures.width, Is.EqualTo(16));
+            Assert.That(manager.CustomTextures.height, Is.EqualTo(8));
+            Assert.That(manager.CustomTextures.volumeDepth, Is.EqualTo(1));
+            Assert.That(manager.CustomTextures.format, Is.EqualTo(RenderTextureFormat.ARGBHalf));
+            AssertPointCustomData(point, -1, 1);
+        }
+
+        // Verifies animated point cubemap cookies target a reserved six-slice cubemap range.
+        [Test]
+        public void AnimatedPointCubemapUsesReservedCubemapSliceRange() {
+            LightVolumeManager manager = CreateManager("Animated Point Cubemap Manager", false);
+            RenderTexture source = CreateRenderTexture("Animated Point Cubemap Source", 4, 4, 6, TextureDimension.Tex2DArray);
+            manager.CustomTexturesWidth = 4;
+            manager.CustomTexturesHeight = 4;
+
+            PointLightVolumeInstance point = CreatePointLight(manager, "Animated Point Cubemap Light", true);
+            point.SetCustomTexture();
+            point.SetPointLight();
+            point.CustomTexture = source;
+            point.ProjectionType = 1; // 1: texture
+            point.CustomTextureIsRenderTexture = true;
+            point.CustomTextureHasDepthSlices = true;
+            point.AutoUpdateCustomTexture = true;
+            manager.PointLightVolumeInstances = new[] { point };
+
+            manager.ReinitializeCustomTextures();
+            manager.UpdateVolumes();
+
+            Assert.That(manager.CustomTextures, Is.Not.Null);
+            Assert.That(manager.CustomTextures.volumeDepth, Is.EqualTo(6));
+            Assert.That(manager.CustomTextures.format, Is.EqualTo(RenderTextureFormat.ARGBHalf));
+            AssertGlobalFloat(_pointLightCubeCountID, 1);
+            AssertPointCustomData(point, -1, 1);
+        }
+
+        // Verifies static shadow cubemaps build the same manager-owned runtime array as animated sources.
+        [Test]
+        public void ShadowCubemapCreatesRuntimeArray() {
+            LightVolumeManager manager = CreateManager("Shadow Cubemap Runtime Manager", false);
+            Cubemap source = CreateCubemap("Shadow Cubemap Source");
+            manager.ShadowTexturesWidth = 8;
+            manager.ShadowTexturesHeight = 8;
+
+            PointLightVolumeInstance point = CreatePointLight(manager, "Shadow Cubemap Light", true);
+            ConfigureShadowTexture(point, source, false, true, false);
+            manager.PointLightVolumeInstances = new[] { point };
+
+            manager.ReinitializeShadowTextures();
+            manager.UpdateVolumes();
+
+            Assert.That(manager.ShadowTextures, Is.Not.Null);
+            Assert.That(manager.ShadowTextures.dimension, Is.EqualTo(TextureDimension.Tex2DArray));
+            Assert.That(manager.ShadowTextures.width, Is.EqualTo(8));
+            Assert.That(manager.ShadowTextures.height, Is.EqualTo(8));
+            Assert.That(manager.ShadowTextures.volumeDepth, Is.EqualTo(6));
+            Assert.That(manager.ShadowTextures.format, Is.EqualTo(RenderTextureFormat.RHalf));
+            Assert.That(Shader.GetGlobalTexture(_pointLightShadowTextureID), Is.SameAs(manager.ShadowTextures));
+            AssertGlobalFloat(_pointLightShadowCountID, 1);
+        }
+
+        // Verifies serialized shadow outputs cannot keep an old resolution after setup metadata changes.
+        [Test]
+        public void ShadowRuntimeArrayUsesConfiguredSize() {
+            LightVolumeManager manager = CreateManager("Shadow Configured Size Manager", false);
+            RenderTexture source = CreateRenderTexture("Shadow Configured Size Source", 8, 4, 6, TextureDimension.Tex2DArray);
+            manager.ShadowTexturesWidth = 16;
+            manager.ShadowTexturesHeight = 8;
+            manager.ShadowTextures = CreateRenderTexture("Shadow Stale Runtime", 64, 64, 6, TextureDimension.Tex2DArray);
+
+            PointLightVolumeInstance point = CreatePointLight(manager, "Shadow Configured Size Light", true);
+            ConfigureShadowTexture(point, source, true, false, true);
+            manager.PointLightVolumeInstances = new[] { point };
+
+            manager.ReinitializeShadowTextures();
+            manager.UpdateVolumes();
+
+            Assert.That(manager.ShadowTextures, Is.Not.Null);
+            Assert.That(manager.ShadowTextures.width, Is.EqualTo(16));
+            Assert.That(manager.ShadowTextures.height, Is.EqualTo(8));
+            Assert.That(manager.ShadowTextures.format, Is.EqualTo(RenderTextureFormat.RHalf));
+            AssertVectorClose(new Vector4(16, 8, 0, 0), Shader.GetGlobalVector(_pointLightShadowResolutionID));
+        }
+
+        // Verifies startup cleanup clears serialized manager-owned shadow output arrays.
+        [Test]
+        public void RuntimeShadowOutputResetClearsSerializedRuntimeTexture() {
+            LightVolumeManager manager = CreateManager("Runtime Shadow Output Reset Manager", false);
+            RenderTexture staleOutput = CreateRenderTexture("LightVolumeManager_ShadowTextures", 64, 64, 6, TextureDimension.Tex2DArray);
+            manager.ShadowTextures = staleOutput;
+            manager.ShadowMapsCount = 1;
+            SetManagerField(manager, _shadowTexturesDepthField, staleOutput.volumeDepth);
+            manager.ShadowTexturesWidth = 256;
+            manager.ShadowTexturesHeight = 256;
+
+            MethodInfo resetMethod = typeof(LightVolumeManager).GetMethod("ResetRuntimeTextureArrays", _lifecycleMethodFlags);
+            Assert.That(resetMethod, Is.Not.Null);
+
+            resetMethod.Invoke(manager, null);
+
+            Assert.That(manager.ShadowTextures, Is.Null);
+        }
+
+        // Verifies shadow runtime arrays use the fixed single-channel half format.
+        [Test]
+        public void ShadowRuntimeArrayUsesFixedRHalfFormat() {
+            LightVolumeManager manager = CreateManager("Shadow Fixed Format Manager", false);
+            Cubemap source = CreateCubemap("Shadow Fixed Format Source");
+            manager.ShadowTexturesWidth = 4;
+            manager.ShadowTexturesHeight = 4;
+
+            PointLightVolumeInstance point = CreatePointLight(manager, "Shadow Fixed Format Light", true);
+            ConfigureShadowTexture(point, source, false, true, false);
+            manager.PointLightVolumeInstances = new[] { point };
+
+            manager.ReinitializeShadowTextures();
+
+            Assert.That(manager.ShadowTextures, Is.Not.Null);
+            Assert.That(manager.ShadowTextures.format, Is.EqualTo(RenderTextureFormat.RHalf));
+        }
+
+        // Verifies per-frame animated shadow updates recover shadow IDs after setup metadata resets the count.
+        [Test]
+        public void AnimatedShadowUpdateRestoresRuntimeReservedShadowCount() {
+            LightVolumeManager manager = CreateManager("Animated Shadow Count Reset Manager", false);
+            RenderTexture source = CreateRenderTexture("Animated Shadow Count Reset Source", 8, 8, 6, TextureDimension.Tex2DArray);
+            manager.ShadowTexturesWidth = 8;
+            manager.ShadowTexturesHeight = 8;
+
+            PointLightVolumeInstance point = CreatePointLight(manager, "Animated Shadow Count Reset Light", true);
+            ConfigureShadowTexture(point, source, true, false, true);
+            manager.PointLightVolumeInstances = new[] { point };
+            manager.ShadowMapsCount = 0;
+
+            manager.UpdateAutoShadowTextures();
+
+            Assert.That(manager.ShadowMapsCount, Is.EqualTo(1));
+            Assert.That(manager.ShadowTextures, Is.Not.Null);
+            Assert.That(manager.ShadowTextures.volumeDepth, Is.EqualTo(6));
+        }
+
+        // Verifies multiple unique shadow cubemaps reserve independent six-slice ranges.
+        [Test]
+        public void ShadowRuntimeArrayReservesSixSlicesPerUniqueSource() {
+            LightVolumeManager manager = CreateManager("Shadow Unique Sources Manager", false);
+            Cubemap firstSource = CreateCubemap("Shadow First Source");
+            Cubemap secondSource = CreateCubemap("Shadow Second Source");
+            manager.ShadowTexturesWidth = 4;
+            manager.ShadowTexturesHeight = 4;
+
+            PointLightVolumeInstance firstPoint = CreatePointLight(manager, "Shadow First Light", true);
+            ConfigureShadowTexture(firstPoint, firstSource, false, true, false);
+            PointLightVolumeInstance secondPoint = CreatePointLight(manager, "Shadow Second Light", true);
+            ConfigureShadowTexture(secondPoint, secondSource, false, true, false);
+            manager.PointLightVolumeInstances = new[] { firstPoint, secondPoint };
+
+            manager.ReinitializeShadowTextures();
+            Assert.DoesNotThrow(() => manager.UpdateVolumes());
+
+            Assert.That(manager.ShadowTextures, Is.Not.Null);
+            Assert.That(manager.ShadowTextures.volumeDepth, Is.EqualTo(12));
+            Assert.That(manager.ShadowMapsCount, Is.EqualTo(2));
+            AssertGlobalFloat(_pointLightShadowCountID, 2);
+        }
+
+        // Verifies duplicate shadow sources resolve to one manager-owned shadow ID and one reserved cubemap range.
+        [Test]
+        public void DuplicateShadowSourcesReuseOneShadowID() {
+            LightVolumeManager manager = CreateManager("Duplicate Shadow IDs Manager", false);
+            Cubemap source = CreateCubemap("Duplicate Shadow Source");
+            manager.ShadowTexturesWidth = 4;
+            manager.ShadowTexturesHeight = 4;
+
+            PointLightVolumeInstance firstPoint = CreatePointLight(manager, "Duplicate Shadow A", true);
+            ConfigureShadowTexture(firstPoint, source, false, true, false);
+            PointLightVolumeInstance secondPoint = CreatePointLight(manager, "Duplicate Shadow B", true);
+            ConfigureShadowTexture(secondPoint, source, false, true, false);
+            manager.PointLightVolumeInstances = new[] { firstPoint, secondPoint };
+
+            manager.ReinitializeShadowTextures();
+            manager.UpdateVolumes();
+
+            Assert.That(manager.ShadowMapsCount, Is.EqualTo(1));
+            Assert.That(GetManagerField<int>(manager, _shadowTexturesDepthField), Is.EqualTo(6));
+            Assert.That(firstPoint.ShadowMapID, Is.EqualTo(0).Within(Epsilon));
+            Assert.That(secondPoint.ShadowMapID, Is.EqualTo(0).Within(Epsilon));
+            AssertGlobalFloat(_pointLightShadowCountID, 1);
+        }
+
+        // Verifies material-only cubemap updates receive Light Volumes per-face target info.
+        [Test]
+        public void AnimatedPointCubemapMaterialReceivesPerFaceBlitInfo() {
+            LightVolumeManager manager = CreateManager("Animated Point Cubemap Material Manager", false);
+            manager.CustomTextures = CreateRenderTexture("Animated Point Cubemap Material Runtime", 16, 8, 12, TextureDimension.Tex2DArray);
+            SetManagerField(manager, _customTexturesDepthField, 12);
+            Material material = CreateMaterial("Hidden/CubeFace");
+            MethodInfo method = typeof(LightVolumeManager).GetMethod("SetMaterialBlitProperties", _lifecycleMethodFlags);
+            Assert.That(method, Is.Not.Null);
+
+            method.Invoke(manager, new object[] { material, 4, 10, true, manager.CustomTextures, 12 });
+
+            AssertVectorClose(new Vector4(16, 8, 1, 4), material.GetVector(CustomRenderTextureInfoProperty));
+        }
+
+        // Verifies manager-owned custom IDs stay compatible with shader slice formulas when cubemap inputs are deduplicated.
+        [Test]
+        public void RuntimeCustomTextureIdsStayCompatibleAfterDuplicateCubemaps() {
+            LightVolumeManager manager = CreateManager("Duplicate Cookie IDs Manager", false);
+            Cubemap cubemap = CreateCubemap("Duplicate Cubemap Cookie");
+            Texture2D cookieA = CreateTexture2D("Cookie A");
+            Texture2D cookieB = CreateTexture2D("Cookie B");
+            manager.CustomTexturesWidth = 4;
+            manager.CustomTexturesHeight = 4;
+
+            PointLightVolumeInstance cubemapPointA = CreatePointLight(manager, "Duplicate Cubemap Point A", true);
+            cubemapPointA.SetPointLight();
+            cubemapPointA.SetCustomTexture();
+            cubemapPointA.CustomTexture = cubemap;
+            cubemapPointA.CustomTextureIsCubemap = true;
+            cubemapPointA.ProjectionType = 1; // 1: texture
+
+            PointLightVolumeInstance cubemapPointB = CreatePointLight(manager, "Duplicate Cubemap Point B", true);
+            cubemapPointB.SetPointLight();
+            cubemapPointB.SetCustomTexture();
+            cubemapPointB.CustomTexture = cubemap;
+            cubemapPointB.CustomTextureIsCubemap = true;
+            cubemapPointB.ProjectionType = 1; // 1: texture
+
+            PointLightVolumeInstance cookieSpotA = CreatePointLight(manager, "Duplicate Cookie Spot A", true);
+            cookieSpotA.SetCustomTexture();
+            cookieSpotA.SetSpotLight(60, 0.5f);
+            cookieSpotA.CustomTexture = cookieA;
+            cookieSpotA.ProjectionType = 1; // 1: texture
+
+            PointLightVolumeInstance cookieSpotB = CreatePointLight(manager, "Duplicate Cookie Spot B", true);
+            cookieSpotB.SetCustomTexture();
+            cookieSpotB.SetSpotLight(60, 0.5f);
+            cookieSpotB.CustomTexture = cookieB;
+            cookieSpotB.ProjectionType = 1; // 1: texture
+
+            PointLightVolumeInstance cookieSpotADuplicate = CreatePointLight(manager, "Duplicate Cookie Spot A Duplicate", true);
+            cookieSpotADuplicate.SetCustomTexture();
+            cookieSpotADuplicate.SetSpotLight(60, 0.5f);
+            cookieSpotADuplicate.CustomTexture = cookieA;
+            cookieSpotADuplicate.ProjectionType = 1; // 1: texture
+
+            manager.PointLightVolumeInstances = new[] { cubemapPointA, cubemapPointB, cookieSpotA, cookieSpotB, cookieSpotADuplicate };
+            manager.ReinitializeCustomTextures();
+            manager.UpdateVolumes();
+
+            Assert.That(manager.CustomTextures, Is.Not.Null);
+            Assert.That(manager.CustomTextures.volumeDepth, Is.EqualTo(8));
+            Assert.That(manager.CubemapsCount, Is.EqualTo(1));
+            Assert.That(GetManagerField<Texture[]>(manager, _customCubemapTexturesField).Length, Is.EqualTo(1));
+            Assert.That(GetManagerField<Texture[]>(manager, _customSingleTexturesField).Length, Is.EqualTo(2));
+            Assert.That(GetManagerField<int[]>(manager, _pointLightCustomIDsField), Is.EqualTo(new[] { 0, 0, 1, 2, 1 }));
+            AssertPointCustomData(0, cubemapPointA, -1, 0);
+            AssertPointCustomData(1, cubemapPointB, -1, 0);
+            AssertPointCustomData(2, cookieSpotA, -2, 0);
+            AssertPointCustomData(3, cookieSpotB, -3, 0);
+            AssertPointCustomData(4, cookieSpotADuplicate, -2, 0);
+        }
+
         // Verifies all active point lights can write Shadow data together.
         [Test]
         public void AllPointLightsWithShadowWriteShadowGlobals() {
             LightVolumeManager manager = CreateManager("All Shadow Manager", false);
             const int pointCount = 6;
-            manager.ShadowMapsCount = pointCount;
-            manager.ShadowTextures = CreateTexture2D("All Shadow Texture Array");
+            manager.ShadowTexturesWidth = 4;
+            manager.ShadowTexturesHeight = 4;
             PointLightVolumeInstance[] points = new PointLightVolumeInstance[pointCount];
 
             for (int i = 0; i < pointCount; i++) {
                 PointLightVolumeInstance point = CreatePointLight(manager, "Shadow Point " + i, true);
-                point.ShadowMapID = i;
+                ConfigureShadowTexture(point, CreateCubemap("Shadow Source " + i), false, true, false);
                 point.ShadowBias = i == 0 ? 0 : 0.01f * (i + 1);
                 point.ShadowBiasSmoothness = 0.03f * (i + 1);
-                point.SoftShadows = i % 2 == 0;
+                point.ShadowSharpness = i / (float)(pointCount - 1);
                 point.WorldSpaceShadows = i % 2 == 0;
                 point.ShadowBakePosition = new Vector3(i + 3, i + 4, i + 5);
                 point.ShadowBakeRotation = Quaternion.Euler(i * 10, i * 15, i * 20);
@@ -543,6 +964,7 @@ namespace VRCLightVolumes.Tests {
             }
             manager.PointLightVolumeInstances = points;
 
+            manager.ReinitializeShadowTextures();
             manager.UpdateVolumes();
 
             Vector4[] shadowData = Shader.GetGlobalVectorArray(_pointLightShadowDataID);
@@ -553,7 +975,7 @@ namespace VRCLightVolumes.Tests {
             for (int i = 0; i < pointCount; i++) {
                 float expectedShadowState = points[i].WorldSpaceShadows ? i + 1 : -i - 1;
                 AssertPointCustomData(i, points[i], 0, 0);
-                AssertVectorClose(new Vector4(expectedShadowState, ExpectedEncodedShadowBias(points[i]), points[i].ShadowBiasSmoothness, 0), shadowData[i]);
+                AssertVectorClose(new Vector4(expectedShadowState, Mathf.Max(points[i].ShadowBias, 0), points[i].ShadowBiasSmoothness, points[i].ShadowSharpness), shadowData[i]);
                 if (points[i].WorldSpaceShadows) {
                     AssertVectorClose(new Vector4(points[i].ShadowBakePosition.x, points[i].ShadowBakePosition.y, points[i].ShadowBakePosition.z, 1), reprojectionData[i]);
                 } else {
@@ -694,6 +1116,54 @@ namespace VRCLightVolumes.Tests {
             return texture;
         }
 
+        // Creates a temporary cubemap tracked by teardown.
+        private Cubemap CreateCubemap(string name) {
+            Cubemap cubemap = new Cubemap(1, TextureFormat.RGBA32, false);
+            cubemap.name = name;
+            cubemap.SetPixel(CubemapFace.PositiveX, 0, 0, Color.white);
+            cubemap.SetPixel(CubemapFace.NegativeX, 0, 0, Color.white);
+            cubemap.SetPixel(CubemapFace.PositiveY, 0, 0, Color.white);
+            cubemap.SetPixel(CubemapFace.NegativeY, 0, 0, Color.white);
+            cubemap.SetPixel(CubemapFace.PositiveZ, 0, 0, Color.white);
+            cubemap.SetPixel(CubemapFace.NegativeZ, 0, 0, Color.white);
+            cubemap.Apply(false);
+            _createdObjects.Add(cubemap);
+            return cubemap;
+        }
+
+        // Creates a temporary render texture source tracked by teardown.
+        private RenderTexture CreateRenderTexture(string name, int width, int height, int depth, TextureDimension dimension) {
+            RenderTexture texture = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+            texture.name = name;
+            texture.dimension = dimension;
+            texture.volumeDepth = Mathf.Max(depth, 1);
+            texture.wrapMode = TextureWrapMode.Clamp;
+            texture.filterMode = FilterMode.Point;
+            texture.Create();
+            _createdObjects.Add(texture);
+            return texture;
+        }
+
+        // Assigns a shadow texture source in the same shape as PointLightVolume authoring sync does.
+        private static void ConfigureShadowTexture(PointLightVolumeInstance point, Texture source, bool autoUpdate, bool isCubemap, bool hasDepthSlices) {
+            point.ShadowMapID = 0;
+            point.ShadowMapTexture = source;
+            point.ShadowMapMaterial = null;
+            point.AutoUpdateShadowMap = autoUpdate;
+            point.ShadowMapTextureIsCubemap = isCubemap;
+            point.ShadowMapTextureHasDepthSlices = hasDepthSlices;
+        }
+
+        // Creates a temporary material tracked by teardown.
+        private Material CreateMaterial(string shaderName) {
+            Shader shader = Shader.Find(shaderName);
+            Assert.That(shader, Is.Not.Null, shaderName + " shader was not found");
+            Material material = new Material(shader);
+            material.name = "Runtime Test Material";
+            _createdObjects.Add(material);
+            return material;
+        }
+
         // Assigns deterministic volume data used by shader global assertions.
         private static void ConfigureLightVolume(LightVolumeInstance volume, Color color, float intensity, bool isAdditive, float offset) {
             volume.Color = color;
@@ -721,22 +1191,16 @@ namespace VRCLightVolumes.Tests {
             return new Vector4(color.r, color.g, color.b, instance.AngleData);
         }
 
-        // Encodes the signed shadow bias the same way as LightVolumeManager does.
-        private static float ExpectedEncodedShadowBias(PointLightVolumeInstance instance) {
-            float bias = Mathf.Max(instance.ShadowBias, 0);
-            return instance.SoftShadows ? -bias - ShadowSoftBiasEncodingEpsilon : bias;
-        }
-
         // Asserts the packed point custom data vector written to the shader.
-        private static void AssertPointCustomData(PointLightVolumeInstance point, float customId, float reserved) {
-            AssertPointCustomData(0, point, customId, reserved);
+        private static void AssertPointCustomData(PointLightVolumeInstance point, float customId, float sourceType) {
+            AssertPointCustomData(0, point, customId, sourceType);
         }
 
         // Asserts the packed point custom data vector at a specific shader array index.
-        private static void AssertPointCustomData(int index, PointLightVolumeInstance point, float customId, float reserved) {
+        private static void AssertPointCustomData(int index, PointLightVolumeInstance point, float customId, float sourceType) {
             Vector4 data = Shader.GetGlobalVectorArray(_pointLightCustomIdID)[index];
             Assert.That(data.x, Is.EqualTo(customId).Within(Epsilon));
-            Assert.That(data.y, Is.EqualTo(reserved).Within(Epsilon));
+            Assert.That(data.y, Is.EqualTo(sourceType).Within(Epsilon));
             Assert.That(data.z, Is.EqualTo(point.SquaredRange).Within(Epsilon));
             Assert.That(data.w, Is.EqualTo(0).Within(Epsilon));
         }

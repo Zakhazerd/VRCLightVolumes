@@ -1,5 +1,5 @@
-using UnityEditor;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 #if UDONSHARP
 using VRC.Udon;
@@ -23,34 +23,35 @@ namespace VRCLightVolumes {
         [Tooltip("Brightness of the point light volume.")]
         public float Intensity = 1f;
         [Tooltip("Parametric uses settings to compute light falloff. LUT uses a texture: X - cone falloff, Y - attenuation (Y only for point lights). Cookie projects a texture for spot lights. Cubemap projects a cubemap for point lights.")]
-        public LightShape Shape = LightShape.Parametric;
+        [FormerlySerializedAs("Shape")] public LightProjection Projection = LightProjection.Parametric;
         [Tooltip("Angle of a spotlight cone in degrees.")]
         [Range(0.1f, 360)] public float Angle = 60f;
         [Tooltip("Cone falloff.")]
         [Range(0.001f, 1)] public float Falloff = 1f;
         [Tooltip("X - cone falloff, Y - attenuation. No compression and RGBA Float or RGBA Half format is recommended.")]
-        public Texture2D FalloffLUT = null;
+        public UnityEngine.Object FalloffLUT = null;
         [Tooltip("Projects a square texture for spot lights.")]
-        public Texture2D Cookie = null;
+        public UnityEngine.Object Cookie = null;
         [Tooltip("Projects a cubemap for point lights.")]
-        public Cubemap Cubemap = null;
+        public UnityEngine.Object Cubemap = null;
         [Tooltip("Shows overdrawing range gizmo. Less point light volumes intersections - more performance!")]
         public bool DebugRange = false;
 
+        [Tooltip("Enables baked shadow map rendering for this light. When disabled, an assigned or baked Shadow Map is kept but ignored at runtime.")]
+        public bool Shadows = false;
         [Tooltip("Rebakes shadows for this point light automatically when you click \"Bake Shadows\" in Light Volume Setup. Alternatively, you can bake it manually pressing the \"Bake Shadows\" button here.")]
         public bool RebakeShadows = false;
-        [Tooltip("Enables 4-sample PCF filtering for this light's baked cubemap. Also reduces artefacts. Disable it for cheaper hard edges.")]
-        public bool SoftShadows = true;
         [Tooltip("World-space bias in meters applied when comparing shaded points against this light's baked cubemap. Larger values reduce artifacts, but can detach contact edges.")]
         [Min(0)] public float Bias = 0.1f;
         [Tooltip("World-space smoothing radius in meters around this light's bias threshold. Larger values reduce artifacts, but can detach contact edges.")]
         [Min(0)] public float BiasSmoothness = 0.25f;
+        [Tooltip("Multiplier for shadow PCF sampling sharpness. 1 keeps native shadow map sharpness, lower values make shadows softer.")]
+        [Range(0, 1)] public float ShadowSharpness = 1f;
         [Tooltip("Use it if you don't want to move baked shadows together with their light. Attaches shadows to the world space basically. Less optimized when turned on.")]
         public bool UseWorldSpace = false;
 
-        public int CustomID = 0;
         [HideInInspector] public int ShadowID = -1;
-        [HideInInspector] public Cubemap ShadowMap = null;
+        [HideInInspector] public UnityEngine.Object ShadowMap = null;
 
         public PointLightVolumeInstance PointLightVolumeInstance;
         public LightVolumeSetup LightVolumeSetup;
@@ -59,12 +60,8 @@ namespace VRCLightVolumes {
         private UdonBehaviour _pointLightVolumeBehaviour = null;
 #endif
 
-        private Texture2D _falloffLUTPrev = null;
-        private Texture2D _cookiePrev = null;
-        private Cubemap _cubemapPrev = null;
-        private Cubemap _shadowMapPrev = null;
-        private LightShape _shapePrev = LightShape.Parametric;
-        private LightType _typePrev = LightType.PointLight;
+        private UnityEngine.Object _shadowMapPrev = null;
+        private bool _shadowsPrev = false;
 
         // To check if object was edited this frame
         private Vector3 _prevPos = Vector3.zero;
@@ -94,43 +91,145 @@ namespace VRCLightVolumes {
             }
         }
 
-        // Returns currently used custom texture depending on the light parameters
-        public Texture GetCustomTexture() {
-            if (Shape == LightShape.Parametric || Type == LightType.AreaLight) {
-                return null;
-            } else if (Type == LightType.PointLight) {
-                if(Shape == LightShape.LUT) {
-                    return FalloffLUT;
-                } else if (Shape == LightShape.Custom) {
-                    return Cubemap;
-                }
-            } else if (Type == LightType.SpotLight) {
-                if (Shape == LightShape.LUT) {
-                    return FalloffLUT;
-                } else if (Shape == LightShape.Custom) {
-                    return Cookie;
-                }
-            }
+        // Returns currently used projection object depending on the light parameters
+        public UnityEngine.Object GetProjectionSource() {
+            if (Projection == LightProjection.Parametric || Type == LightType.AreaLight) return null;
+            if (Projection == LightProjection.LUT) return FalloffLUT;
+            if (Type == LightType.PointLight) return Cubemap;
+            if (Type == LightType.SpotLight) return Cookie;
             return null;
+        }
+
+        // Returns the projection texture source that should be copied into the shared runtime texture array
+        public Texture GetCustomTexture() {
+            UnityEngine.Object source = GetProjectionSource();
+            return source as Texture;
+        }
+
+        // Returns the projection material source when this light uses material rendering
+        public Material GetCustomTextureMaterial() {
+            return GetProjectionSource() as Material;
+        }
+
+        // Returns the projection source type stored by the runtime instance
+        public int GetProjectionType() {
+            UnityEngine.Object source = GetProjectionSource();
+            if (!HasProjectionSource()) return 0; // 0: none
+            if (source is Material) return 2; // 2: material
+            if (source is Texture) return 1; // 1: texture
+            return 0; // 0: none
+        }
+
+        // Returns true when the active projection source type is supported by this light type
+        public bool HasProjectionSource() {
+            UnityEngine.Object source = GetProjectionSource();
+            if (source == null) return false;
+            if (source is Material) return true;
+            if (Projection == LightProjection.LUT) return source is Texture;
+            if (Projection == LightProjection.Custom && Type == LightType.PointLight) return source is Texture;
+            if (Projection == LightProjection.Custom && Type == LightType.SpotLight) return source is Texture;
+            return false;
+        }
+
+        // Returns true when the active projection source needs a per-frame copy into the runtime texture array
+        public bool ShouldAutoUpdateCustomTexture() {
+            return IsAnimatedProjectionSource(GetProjectionSource());
+        }
+
+        // Checks if a projection source is runtime-rendered instead of a static imported texture
+        private static bool IsAnimatedProjectionSource(UnityEngine.Object source) {
+            return source is RenderTexture || source is Material;
+        }
+
+        // Returns true when this light needs six cubemap slots in the shared cookie texture array
+        public bool UsesCubemapProjection() {
+            return Type == LightType.PointLight && Projection == LightProjection.Custom && HasProjectionSource();
+        }
+
+        // Returns internal runtime projection mode. 0 = parametric, 1 = LUT, 2 = cookie or cubemap
+        private int GetProjectionMode() {
+            if (!HasProjectionSource()) return 0; // 0: parametric
+            if (Projection == LightProjection.LUT) return 1; // 1: LUT
+            if (Projection == LightProjection.Custom) return 2; // 2: custom cookie or cubemap
+            return 0; // 0: parametric
+        }
+
+        // Returns true when the assigned projection texture is a real cubemap
+        private bool IsProjectionTextureCubemap() {
+            return IsCubemapTexture(GetProjectionSource() as Texture);
+        }
+
+        // Returns true when the assigned projection texture is runtime-rendered
+        private bool IsProjectionTextureRenderTexture() {
+            return GetProjectionSource() is RenderTexture;
+        }
+
+        // Returns true when the assigned projection texture has independent array slices
+        private bool ProjectionTextureHasDepthSlices() {
+            UnityEngine.Object source = GetProjectionSource();
+            RenderTexture renderTexture = source as RenderTexture;
+            if (renderTexture != null) return renderTexture.dimension == UnityEngine.Rendering.TextureDimension.Tex2DArray && renderTexture.volumeDepth > 1;
+            return source is Texture2DArray;
+        }
+
+        // Returns the shadow texture source that should be copied into the shared runtime shadow texture array
+        public Texture GetShadowMapTexture() {
+            return ShadowMap as Texture;
+        }
+
+        // Returns the shadow material source when this light uses material rendering
+        public Material GetShadowMapMaterial() {
+            return ShadowMap as Material;
+        }
+
+        // Returns true when the assigned shadow source can be used by runtime shadows
+        public bool HasShadowMapSource() {
+            if (ShadowMap == null) return false;
+            if (ShadowMap is Material) return true;
+            return ShadowMap is Texture;
+        }
+
+        // Returns true when the assigned shadow texture is a real cubemap
+        private bool IsShadowMapTextureCubemap() {
+            return IsCubemapTexture(ShadowMap as Texture);
+        }
+
+        // Returns true when a texture should be unfolded as six cubemap faces
+        private static bool IsCubemapTexture(Texture texture) {
+            if (texture is Cubemap) return true;
+            RenderTexture renderTexture = texture as RenderTexture;
+            return renderTexture != null && renderTexture.dimension == UnityEngine.Rendering.TextureDimension.Cube;
+        }
+
+        // Returns true when the assigned shadow texture has independent cubemap face slices
+        private bool ShadowMapTextureHasDepthSlices() {
+            RenderTexture renderTexture = ShadowMap as RenderTexture;
+            if (renderTexture != null) return renderTexture.dimension == UnityEngine.Rendering.TextureDimension.Tex2DArray && renderTexture.volumeDepth > 1;
+            return ShadowMap is Texture2DArray;
+        }
+
+        // Returns true when the shadow source needs a per-frame copy into the runtime texture array
+        private bool ShouldAutoUpdateShadowMap() {
+            return Shadows && IsAnimatedShadowSource(ShadowMap);
+        }
+
+        // Checks if a shadow map object should be rendered every frame by LightVolumeManager
+        public static bool IsAnimatedShadowSource(UnityEngine.Object source) {
+            return source is RenderTexture || source is Material;
         }
 
         private void Update() {
             if (gameObject == null) return;
             SetupDependencies();
 #if UNITY_EDITOR
-            // Regenerate texture array
-            if (_falloffLUTPrev != FalloffLUT || _cookiePrev != Cookie || _cubemapPrev != Cubemap || _shapePrev != Shape || _typePrev != Type) {
-                _falloffLUTPrev = FalloffLUT;
-                _cookiePrev = Cookie;
-                _cubemapPrev = Cubemap;
-                _shapePrev = Shape;
-                _typePrev = Type;
-                LightVolumeSetup.GenerateCustomTexturesArray();
-            }
             // Regenerate Shadow texture array
             if (_shadowMapPrev != ShadowMap) {
                 _shadowMapPrev = ShadowMap;
-                LightVolumeSetup.GenerateShadowTexturesArray();
+                LightVolumeSetup.ReinitializeShadowTextures();
+            }
+            if (_shadowsPrev != Shadows) {
+                _shadowsPrev = Shadows;
+                LightVolumeSetup.ReinitializeShadowTextures();
             }
             // Sync udon script
             if (_prevPos != transform.position || _prevRot != transform.rotation || _prevScl != transform.localScale) {
@@ -142,13 +241,18 @@ namespace VRCLightVolumes {
 
             if (_isValidated) {
                 _isValidated = false;
-                SyncUdonScript();
-                LightVolumeSetup.SyncUdonScript();
+                SyncUdonScript(false);
             }
 #endif
         }
 
+        // Syncs all editable data into the runtime PointLightVolumeInstance
         public void SyncUdonScript() {
+            SyncUdonScript(true);
+        }
+
+        // Syncs this authoring component into the runtime instance, optionally refreshing projection texture references
+        private void SyncUdonScript(bool syncTextureSources) {
             if (gameObject == null) return;
             SetupDependencies();
 #if UDONSHARP
@@ -160,28 +264,27 @@ namespace VRCLightVolumes {
                 _pointLightVolumeBehaviour.SetProgramVariable("IsRangeDirty", true);
                 _pointLightVolumeBehaviour.SetProgramVariable("ShadowMapID", (float)GetShadowRuntimeID());
                 _pointLightVolumeBehaviour.SetProgramVariable("WorldSpaceShadows", UseWorldSpace);
-                _pointLightVolumeBehaviour.SetProgramVariable("SoftShadows", SoftShadows);
                 _pointLightVolumeBehaviour.SetProgramVariable("ShadowBias", Bias);
                 _pointLightVolumeBehaviour.SetProgramVariable("ShadowBiasSmoothness", BiasSmoothness);
+                _pointLightVolumeBehaviour.SetProgramVariable("ShadowSharpness", ShadowSharpness);
                 _pointLightVolumeBehaviour.SetProgramVariable("ShadowBakePosition", PointLightVolumeInstance.ShadowBakePosition);
                 _pointLightVolumeBehaviour.SetProgramVariable("ShadowBakeRotation", PointLightVolumeInstance.ShadowBakeRotation);
-                // Udon does not support methods with parameters, so under the hood, it's just some global variables.
-                // We can first set these parameters and then exetute a parameterless method.
+                if (syncTextureSources) SyncTextureSourcesToUdon();
+                // Udon does not support parameterized methods, so the values are passed through temporary program variables
+                // Set the parameters first, then execute a parameterless method
                 if (Type == LightType.PointLight) { // Point light
-                    if (Shape == LightShape.Custom && Cubemap != null) { // Use Custom Cubemap Texture
+                    if (Projection == LightProjection.Custom && HasProjectionSource()) { // Use custom cubemap texture
                         // SetRange(LightSourceSize)
                         _pointLightVolumeBehaviour.SetProgramVariable("__0_size__param", LightSourceSize);
                         _pointLightVolumeBehaviour.SendCustomEvent("__0_SetLightSourceSize");
-                        // SetCustomTexture(CustomID)
-                        _pointLightVolumeBehaviour.SetProgramVariable("__1_id__param", CustomID);
-                        _pointLightVolumeBehaviour.SendCustomEvent("__0_SetCustomTexture");
-                    } else if (Shape == LightShape.LUT && FalloffLUT != null) { // Use LUT
+                        // SetCustomTexture()
+                        _pointLightVolumeBehaviour.SendCustomEvent("SetCustomTexture");
+                    } else if (Projection == LightProjection.LUT && HasProjectionSource()) { // Use LUT
                         // SetRange(Range)
                         _pointLightVolumeBehaviour.SetProgramVariable("__0_size__param", Range);
                         _pointLightVolumeBehaviour.SendCustomEvent("__0_SetLightSourceSize");
-                        // SetLut(CustomID)
-                        _pointLightVolumeBehaviour.SetProgramVariable("__0_id__param", CustomID);
-                        _pointLightVolumeBehaviour.SendCustomEvent("__0_SetLut");
+                        // SetLut()
+                        _pointLightVolumeBehaviour.SendCustomEvent("SetLut");
                     } else { // Use this light in parametric mode
                         // SetRange(LightSourceSize)
                         _pointLightVolumeBehaviour.SetProgramVariable("__0_size__param", LightSourceSize);
@@ -189,28 +292,26 @@ namespace VRCLightVolumes {
                         // SetParametric()
                         _pointLightVolumeBehaviour.SendCustomEvent("SetParametric");
                     }
-                    // Use it as Point Light
+                    // Use it as a point light
                     // SetPointLight()
                     _pointLightVolumeBehaviour.SendCustomEvent("SetPointLight");
                     _pointLightVolumeBehaviour.SendCustomEvent("UpdateRotation");
-                } else if (Type == LightType.SpotLight) { // Spot Light
+                } else if (Type == LightType.SpotLight) { // Spot light
                     // SetRange(Range)
                     _pointLightVolumeBehaviour.SetProgramVariable("__0_size__param", Range);
                     _pointLightVolumeBehaviour.SendCustomEvent("__0_SetLightSourceSize");
-                    if (Shape == LightShape.Custom && Cookie != null) { // Use Cookie Texture
+                    if (Projection == LightProjection.Custom && HasProjectionSource()) { // Use cookie texture
                         // SetRange(LightSourceSize)
                         _pointLightVolumeBehaviour.SetProgramVariable("__0_size__param", LightSourceSize);
                         _pointLightVolumeBehaviour.SendCustomEvent("__0_SetLightSourceSize");
-                        // SetCustomTexture(CustomID)
-                        _pointLightVolumeBehaviour.SetProgramVariable("__1_id__param", CustomID);
-                        _pointLightVolumeBehaviour.SendCustomEvent("__0_SetCustomTexture");
-                    } else if (Shape == LightShape.LUT && FalloffLUT != null) { // Use LUT
+                        // SetCustomTexture()
+                        _pointLightVolumeBehaviour.SendCustomEvent("SetCustomTexture");
+                    } else if (Projection == LightProjection.LUT && HasProjectionSource()) { // Use LUT
                         // SetRange(Range)
                         _pointLightVolumeBehaviour.SetProgramVariable("__0_size__param", Range);
                         _pointLightVolumeBehaviour.SendCustomEvent("__0_SetLightSourceSize");
-                        // SetLut(CustomID)
-                        _pointLightVolumeBehaviour.SetProgramVariable("__0_id__param", CustomID);
-                        _pointLightVolumeBehaviour.SendCustomEvent("__0_SetLut");
+                        // SetLut()
+                        _pointLightVolumeBehaviour.SendCustomEvent("SetLut");
                     } else { // Use this light in parametric mode
                         // SetRange(LightSourceSize)
                         _pointLightVolumeBehaviour.SetProgramVariable("__0_size__param", LightSourceSize);
@@ -218,7 +319,7 @@ namespace VRCLightVolumes {
                         // SetParametric()
                         _pointLightVolumeBehaviour.SendCustomEvent("SetParametric");
                     }
-                    // Don't use custom tex
+                    // Use regular spot light projection
                     // SetSpotLight(Angle, Falloff)
                     _pointLightVolumeBehaviour.SetProgramVariable("__0_angleDeg__param", Angle);
                     _pointLightVolumeBehaviour.SetProgramVariable("__0_falloff__param", Falloff);
@@ -233,7 +334,7 @@ namespace VRCLightVolumes {
 
             } else {
 #endif
-                PointLightVolumeInstance.IsInitialized = true; // Always override to true in editor with no play mode!
+                PointLightVolumeInstance.IsInitialized = true; // Always override to true in editor outside play mode
                 PointLightVolumeInstance.LightVolumeManager = LightVolumeSetup.LightVolumeManager;
 
                 PointLightVolumeInstance.IsDynamic = Dynamic;
@@ -242,36 +343,37 @@ namespace VRCLightVolumes {
                 PointLightVolumeInstance.IsRangeDirty = true;
                 PointLightVolumeInstance.ShadowMapID = GetShadowRuntimeID();
                 PointLightVolumeInstance.WorldSpaceShadows = UseWorldSpace;
-                PointLightVolumeInstance.SoftShadows = SoftShadows;
                 PointLightVolumeInstance.ShadowBias = Bias;
                 PointLightVolumeInstance.ShadowBiasSmoothness = BiasSmoothness;
+                PointLightVolumeInstance.ShadowSharpness = ShadowSharpness;
+                if (syncTextureSources) SyncTextureSourcesToInstance();
 
                 if (Type == LightType.PointLight) { // Point light
-                    if (Shape == LightShape.Custom && Cubemap != null) {
+                    if (Projection == LightProjection.Custom && HasProjectionSource()) {
                         PointLightVolumeInstance.SetLightSourceSize(LightSourceSize);
-                        PointLightVolumeInstance.SetCustomTexture(CustomID); // Use Custom Cubemap Texture
-                    } else if (Shape == LightShape.LUT && FalloffLUT != null) {
+                        PointLightVolumeInstance.SetCustomTexture(); // Use custom cubemap texture
+                    } else if (Projection == LightProjection.LUT && HasProjectionSource()) {
                         PointLightVolumeInstance.SetLightSourceSize(Range);
-                        PointLightVolumeInstance.SetLut(CustomID); // Use LUT
+                        PointLightVolumeInstance.SetLut(); // Use LUT
                     } else {
                         PointLightVolumeInstance.SetLightSourceSize(LightSourceSize);
                         PointLightVolumeInstance.SetParametric(); // Use this light in parametric mode
                     }
-                    PointLightVolumeInstance.SetPointLight(); // Use it as Point Light
+                    PointLightVolumeInstance.SetPointLight(); // Use it as a point light
                     PointLightVolumeInstance.UpdateRotation();
-                } else if (Type == LightType.SpotLight) { // Spot Light
+                } else if (Type == LightType.SpotLight) { // Spot light
                     PointLightVolumeInstance.SetLightSourceSize(Range);
-                    if (Shape == LightShape.Custom && Cookie != null) {
+                    if (Projection == LightProjection.Custom && HasProjectionSource()) {
                         PointLightVolumeInstance.SetLightSourceSize(LightSourceSize);
-                        PointLightVolumeInstance.SetCustomTexture(CustomID); // Use Cookie Texture
-                    } else if (Shape == LightShape.LUT && FalloffLUT != null) {
+                        PointLightVolumeInstance.SetCustomTexture(); // Use cookie texture
+                    } else if (Projection == LightProjection.LUT && HasProjectionSource()) {
                         PointLightVolumeInstance.SetLightSourceSize(Range);
-                        PointLightVolumeInstance.SetLut(CustomID); // Use LUT
+                        PointLightVolumeInstance.SetLut(); // Use LUT
                     } else {
                         PointLightVolumeInstance.SetLightSourceSize(LightSourceSize);
                         PointLightVolumeInstance.SetParametric(); // Use this light in parametric mode
                     }
-                    PointLightVolumeInstance.SetSpotLight(Angle, Falloff); // Don't use custom tex
+                    PointLightVolumeInstance.SetSpotLight(Angle, Falloff); // Use regular spot light projection
                     PointLightVolumeInstance.UpdateRotation();
                 } else if (Type == LightType.AreaLight) { // Area light
                     PointLightVolumeInstance.SetAreaLight();
@@ -286,6 +388,42 @@ namespace VRCLightVolumes {
 #if UDONSHARP
             }
 #endif
+        }
+
+#if UDONSHARP
+        // Copies projection texture sources into the Udon behaviour proxy in play mode
+        private void SyncTextureSourcesToUdon() {
+            _pointLightVolumeBehaviour.SetProgramVariable("CustomTexture", GetCustomTexture());
+            _pointLightVolumeBehaviour.SetProgramVariable("CustomTextureMaterial", GetCustomTextureMaterial());
+            _pointLightVolumeBehaviour.SetProgramVariable("ProjectionType", GetProjectionType());
+            _pointLightVolumeBehaviour.SetProgramVariable("ProjectionMode", GetProjectionMode());
+            _pointLightVolumeBehaviour.SetProgramVariable("AutoUpdateCustomTexture", ShouldAutoUpdateCustomTexture());
+            _pointLightVolumeBehaviour.SetProgramVariable("CustomTextureIsCubemap", IsProjectionTextureCubemap());
+            _pointLightVolumeBehaviour.SetProgramVariable("CustomTextureIsRenderTexture", IsProjectionTextureRenderTexture());
+            _pointLightVolumeBehaviour.SetProgramVariable("CustomTextureHasDepthSlices", ProjectionTextureHasDepthSlices());
+            _pointLightVolumeBehaviour.SetProgramVariable("ShadowMapTexture", GetShadowMapTexture());
+            _pointLightVolumeBehaviour.SetProgramVariable("ShadowMapMaterial", ShadowMap as Material);
+            _pointLightVolumeBehaviour.SetProgramVariable("AutoUpdateShadowMap", ShouldAutoUpdateShadowMap());
+            _pointLightVolumeBehaviour.SetProgramVariable("ShadowMapTextureIsCubemap", IsShadowMapTextureCubemap());
+            _pointLightVolumeBehaviour.SetProgramVariable("ShadowMapTextureHasDepthSlices", ShadowMapTextureHasDepthSlices());
+        }
+#endif
+
+        // Copies projection texture sources into the runtime point light instance
+        private void SyncTextureSourcesToInstance() {
+            PointLightVolumeInstance.CustomTexture = GetCustomTexture();
+            PointLightVolumeInstance.CustomTextureMaterial = GetCustomTextureMaterial();
+            PointLightVolumeInstance.ProjectionType = GetProjectionType();
+            PointLightVolumeInstance.ProjectionMode = GetProjectionMode();
+            PointLightVolumeInstance.AutoUpdateCustomTexture = ShouldAutoUpdateCustomTexture();
+            PointLightVolumeInstance.CustomTextureIsCubemap = IsProjectionTextureCubemap();
+            PointLightVolumeInstance.CustomTextureIsRenderTexture = IsProjectionTextureRenderTexture();
+            PointLightVolumeInstance.CustomTextureHasDepthSlices = ProjectionTextureHasDepthSlices();
+            PointLightVolumeInstance.ShadowMapTexture = GetShadowMapTexture();
+            PointLightVolumeInstance.ShadowMapMaterial = ShadowMap as Material;
+            PointLightVolumeInstance.AutoUpdateShadowMap = ShouldAutoUpdateShadowMap();
+            PointLightVolumeInstance.ShadowMapTextureIsCubemap = IsShadowMapTextureCubemap();
+            PointLightVolumeInstance.ShadowMapTextureHasDepthSlices = ShadowMapTextureHasDepthSlices();
         }
 
         private void Reset() {
@@ -315,8 +453,8 @@ namespace VRCLightVolumes {
                 Cubemap = null;
                 ShadowMap = null;
 #if UNITY_EDITOR
-                LightVolumeSetup.GenerateCustomTexturesArray();
-                LightVolumeSetup.GenerateShadowTexturesArray();
+                LightVolumeSetup.ReinitializeCustomTextures();
+                LightVolumeSetup.ReinitializeShadowTextures();
 #endif
                 LightVolumeSetup.RefreshVolumesList();
                 LightVolumeSetup.SyncUdonScript();
@@ -327,12 +465,12 @@ namespace VRCLightVolumes {
             _isValidated = true;
         }
 
-        // Returns a valid shadow map ID or disables the shadow for runtime.
+        // Returns a valid shadow map ID or disables the shadow for runtime
         private int GetShadowRuntimeID() {
-            return ShadowMap != null ? ShadowID : -1;
+            return Shadows && HasShadowMapSource() ? 0 : -1;
         }
 
-        // Returns the editor-only far clip used by the shadow map bake.
+        // Returns the editor-only far clip used by the shadow map bake
         public float GetShadowFarClip() {
             float scale = GetAverageLossyScale();
             float cutoff = LightVolumeSetup != null ? LightVolumeSetup.BrightnessCutoff : 0.35f;
@@ -342,24 +480,24 @@ namespace VRCLightVolumes {
                 float height = Mathf.Max(Mathf.Abs(lossyScale.y), 0.001f);
                 return Mathf.Max(Mathf.Sqrt(ComputeAreaLightSquaredBoundingSphere(width, height, Color, Intensity * Mathf.PI, cutoff)), 0.0001f);
             }
-            if (Shape == LightShape.LUT && FalloffLUT != null) return Mathf.Max(Range * scale, 0.0001f);
+            if (Projection == LightProjection.LUT && HasProjectionSource()) return Mathf.Max(Range * scale, 0.0001f);
             float size = Mathf.Max(LightSourceSize * scale, 0.0001f);
             return Mathf.Max(Mathf.Sqrt(ComputePointLightSquaredBoundingSphere(Color, Intensity, size, cutoff)), 0.0001f);
         }
 
-        // Returns the same average lossy scale approximation used by PointLightVolumeInstance.
+        // Returns the same average lossy scale approximation used by PointLightVolumeInstance
         private float GetAverageLossyScale() {
             Vector3 scale = transform.lossyScale;
             return (Mathf.Abs(scale.x) + Mathf.Abs(scale.y) + Mathf.Abs(scale.z)) / 3f;
         }
 
-        // Computes the point light influence radius squared for the brightness cutoff.
+        // Computes the point light influence radius squared for the brightness cutoff
         private static float ComputePointLightSquaredBoundingSphere(Color color, float intensity, float size, float cutoff) {
             float l = Mathf.Max(color.r, Mathf.Max(color.g, color.b));
             return Mathf.Max(Mathf.PI * 2f * l * Mathf.Abs(intensity) / (cutoff * cutoff) - 1f, 0f) * size * size;
         }
 
-        // Computes the area light influence radius squared for the brightness cutoff.
+        // Computes the area light influence radius squared for the brightness cutoff
         private static float ComputeAreaLightSquaredBoundingSphere(float width, float height, Color color, float intensity, float cutoff) {
             float l = Mathf.Max(color.r, Mathf.Max(color.g, color.b)) * Mathf.Abs(intensity);
             if (l <= 0.000001f) return 0f;
@@ -380,18 +518,18 @@ namespace VRCLightVolumes {
         }
 
 #if UNITY_EDITOR
-        // Bakes or re-bakes the shadow map for this light.
+        // Bakes or re-bakes the shadow map for this light
         [ContextMenu("Bake Shadow Map")]
         public void BakeShadowMap() {
             BakeShadowMap("", true);
         }
 
-        // Bakes or re-bakes the shadow map for this light.
+        // Bakes or re-bakes the shadow map for this light
         public bool BakeShadowMap(string infoString, bool regenerateArray) {
             SetupDependencies();
             float farClip = GetShadowFarClip();
             int resolution = LightVolumeSetup != null ? (int)LightVolumeSetup.ShadowResolution : 128;
-            TextureFormat format = LightVolumeSetup != null ? LightVolumeSetup.GetShadowTextureFormat() : TextureFormat.RHalf;
+            TextureFormat format = LightVolumeSetup != null ? LightVolumeSetup.GetShadowMapBakeFormat() : TextureFormat.RHalf;
             Cubemap cubemap = PointLightShadowBaker.BakeShadowMap(this, resolution, farClip, format, infoString);
             if (cubemap == null) return false;
 
@@ -410,7 +548,7 @@ namespace VRCLightVolumes {
             LVUtils.MarkDirty(PointLightVolumeInstance);
 
             if (regenerateArray && LightVolumeSetup != null) {
-                LightVolumeSetup.GenerateShadowTexturesArray();
+                LightVolumeSetup.ReinitializeShadowTextures();
             }
             SyncUdonScript();
             return true;
@@ -418,7 +556,7 @@ namespace VRCLightVolumes {
 
 #endif
 
-        public enum LightShape {
+        public enum LightProjection {
             Parametric,
             LUT,
             Custom

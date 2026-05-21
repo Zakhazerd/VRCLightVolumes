@@ -18,9 +18,7 @@ namespace VRCLightVolumes {
 
         private bool _isMultipleInstancesError = false;
         private static readonly GUIContent _cookieResolutionContent = new GUIContent("Cookie Resolution", "Resolution used for point light cookie, LUT and cubemap projection textures.");
-        private static readonly GUIContent _cookieFormatContent = new GUIContent("Cookie Format", "Texture format used for point light cookie, LUT and cubemap projection textures.");
         private static readonly GUIContent _shadowResolutionContent = new GUIContent("Shadow Resolution", "Resolution used for per-light shadow maps.");
-        private static readonly GUIContent _shadowFormatContent = new GUIContent("Shadow Format", "Texture format used for per-light shadow maps. RHalf is smaller, RFloat is more precise.");
         private static readonly GUIContent _brightnessCutoffContent = new GUIContent("Brightness Cutoff", "The minimum brightness at a point due to lighting from a Point Light Volume, before the light is culled.");
 
         private void OnEnable() {
@@ -249,31 +247,47 @@ namespace VRCLightVolumes {
                 GUILayout.Space(10);
             }
 
-            ulong dataBytes = GetLightVolumeDataBytes();
-            GUILayout.Label($"Data size in VRAM: {SizeInVRAM(dataBytes)} MB");
-            GUILayout.Label($"Data size in bundle: {SizeInBundle(dataBytes)} MB (Approximately)");
+            ulong atlasVoxelCount = 0;
+            ulong vramBytes = 0;
+            if (_lightVolumeSetup.LightVolumeManager != null) {
+                LightVolumeManager manager = _lightVolumeSetup.LightVolumeManager;
+                Texture atlas = manager.LightVolumeAtlasBase != null ? manager.LightVolumeAtlasBase : manager.LightVolumeAtlas;
+                Texture3D atlas3D = atlas as Texture3D;
+                if (atlas3D != null) {
+                    atlasVoxelCount = (ulong)atlas3D.width * (ulong)atlas3D.height * (ulong)atlas3D.depth;
+                    vramBytes += atlasVoxelCount * 8;
+                }
+
+                RenderTexture atlasRT = atlas as RenderTexture;
+                if (atlasRT != null) vramBytes += (ulong)atlasRT.width * (ulong)atlasRT.height * (ulong)Mathf.Max(atlasRT.volumeDepth, 1) * 8;
+
+                RenderTexture customTexturesRT = manager.CustomTextures;
+                if (customTexturesRT != null) vramBytes += (ulong)customTexturesRT.width * (ulong)customTexturesRT.height * (ulong)Mathf.Max(customTexturesRT.volumeDepth, 1) * 8;
+
+                RenderTexture shadowTexturesRT = manager.ShadowTextures;
+                if (shadowTexturesRT != null) vramBytes += (ulong)shadowTexturesRT.width * (ulong)shadowTexturesRT.height * (ulong)Mathf.Max(shadowTexturesRT.volumeDepth, 1) * 2;
+            }
+
+            GUILayout.Label(new GUIContent($"Data size in VRAM: {SizeInVRAM(vramBytes)} MB", "Includes only the Light Volume 3D atlas, cookie texture arrays and shadow map arrays."));
+            GUILayout.Label(new GUIContent($"Data size in bundle: {SizeInBundle(atlasVoxelCount)} MB (Approximately)", "Includes only the Light Volume 3D atlas."));
 
             GUILayout.Space(10);
 
             List<string> hiddenFields = new List<string>() { "m_Script", "LightVolumes", "PointLightVolumes", "LightVolumesWeights", "LightVolumeAtlas", "LightVolumeDataList", "LightVolumeManager", "_bakingModePrev", "IsLegacyUVWConverted" };
             hiddenFields.Add("CookieResolution");
-            hiddenFields.Add("CookieFormat");
             hiddenFields.Add("BrightnessCutoff");
             hiddenFields.Add("ShadowResolution");
-            hiddenFields.Add("ShadowFormat");
             hiddenFields.Add("AtlasPostProcessors");
-            hiddenFields.Add("CookiePostProcessors");
-            hiddenFields.Add("ShadowPostProcessors");
             int plvCount = _lightVolumeSetup.PointLightVolumes.Count;
             bool isShadow = false;
             bool isShadowBatchBake = false;
             for (int i = 0; i < plvCount; i++) {
                 PointLightVolume pointLightVolume = _lightVolumeSetup.PointLightVolumes[i];
                 if (pointLightVolume == null) continue;
-                if (pointLightVolume.ShadowMap != null || pointLightVolume.RebakeShadows) {
+                if (pointLightVolume.Shadows && (pointLightVolume.HasShadowMapSource() || pointLightVolume.RebakeShadows)) {
                     isShadow = true;
                 }
-                if (pointLightVolume.RebakeShadows) {
+                if (pointLightVolume.Shadows && pointLightVolume.RebakeShadows) {
                     isShadowBatchBake = true;
                 }
                 if (isShadow && isShadowBatchBake) {
@@ -292,10 +306,8 @@ namespace VRCLightVolumes {
 
             if (plvCount > 0) {
                 EditorGUILayout.PropertyField(serializedObject.FindProperty("CookieResolution"), _cookieResolutionContent);
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("CookieFormat"), _cookieFormatContent);
                 if (isShadow) {
                     EditorGUILayout.PropertyField(serializedObject.FindProperty("ShadowResolution"), _shadowResolutionContent);
-                    EditorGUILayout.PropertyField(serializedObject.FindProperty("ShadowFormat"), _shadowFormatContent);
                 }
                 EditorGUILayout.PropertyField(serializedObject.FindProperty("BrightnessCutoff"), _brightnessCutoffContent);
             }
@@ -328,7 +340,7 @@ namespace VRCLightVolumes {
                 GUILayout.Space(5);
 
                 GUI.enabled = isShadowBatchBake;
-                if (GUILayout.Button(new GUIContent("Bake Shadows", "Bakes shadow maps for all point, spot and area Light Volumes with Rebake Shadows enabled."))) {
+                if (GUILayout.Button(new GUIContent("Bake Shadows", "Bakes shadow maps for all point, spot and area Light Volumes with Shadows and Rebake Shadows enabled."))) {
                     _lightVolumeSetup.BakeShadowMaps();
                 }
                 GUI.enabled = true;
@@ -336,70 +348,12 @@ namespace VRCLightVolumes {
 
             GUILayout.EndHorizontal();
 
-            serializedObject.ApplyModifiedProperties();
-
-        }
-
-        // Calculates the total size of generated Light Volume textures in bytes.
-        private ulong GetLightVolumeDataBytes() {
-            if (_lightVolumeSetup.LightVolumeManager == null) return 0;
-
-            LightVolumeManager manager = _lightVolumeSetup.LightVolumeManager;
-            ulong bytes = 0;
-
-            bytes += GetTextureBytes(manager.LightVolumeAtlasBase, 8);
-            bytes += GetPostProcessorBytes(_lightVolumeSetup.AtlasPostProcessors, 8);
-
-            Texture customTexturesBase = manager.CustomTexturesBase != null ? manager.CustomTexturesBase : manager.CustomTextures;
-            Texture shadowTexturesBase = manager.ShadowTexturesBase != null ? manager.ShadowTexturesBase : manager.ShadowTextures;
-            bytes += GetTextureBytes(customTexturesBase, GetCookieTextureFormatBytes(_lightVolumeSetup.CookieFormat));
-            bytes += GetPostProcessorBytes(_lightVolumeSetup.CookiePostProcessors, GetCookieTextureFormatBytes(_lightVolumeSetup.CookieFormat));
-            bytes += GetTextureBytes(shadowTexturesBase, GetShadowTextureFormatBytes(_lightVolumeSetup.ShadowFormat));
-            bytes += GetPostProcessorBytes(_lightVolumeSetup.ShadowPostProcessors, GetShadowTextureFormatBytes(_lightVolumeSetup.ShadowFormat));
-
-            return bytes;
-        }
-
-        // Calculates the total size of post processor render textures.
-        private ulong GetPostProcessorBytes(LightVolumeSetup.PostProcessor[] postProcessors, int bytesPerTexel) {
-            if (postProcessors == null) return 0;
-            ulong bytes = 0;
-            for (int i = 0; i < postProcessors.Length; i++) {
-                bytes += GetTextureBytes(postProcessors[i].RT, bytesPerTexel);
-            }
-            return bytes;
-        }
-
-        // Calculates texture size from dimensions and a known bytes-per-texel format.
-        private ulong GetTextureBytes(Texture texture, int bytesPerTexel) {
-            if (texture == null) return 0;
-
-            int depth = 1;
-            if (texture is Texture3D texture3D) {
-                depth = texture3D.depth;
-            } else if (texture is Texture2DArray textureArray) {
-                depth = textureArray.depth;
-            } else if (texture is CustomRenderTexture customRenderTexture) {
-                depth = customRenderTexture.volumeDepth;
-            } else if (texture is RenderTexture renderTexture) {
-                depth = renderTexture.volumeDepth;
-            } else if (texture is Cubemap) {
-                depth = 6;
+            if (serializedObject.ApplyModifiedProperties()) {
+                _lightVolumeSetup.SyncUdonScript();
+                EditorApplication.QueuePlayerLoopUpdate();
+                SceneView.RepaintAll();
             }
 
-            return (ulong)Mathf.Max(texture.width, 0) * (ulong)Mathf.Max(texture.height, 0) * (ulong)Mathf.Max(depth, 1) * (ulong)Mathf.Max(bytesPerTexel, 0);
-        }
-
-        // Returns bytes per pixel for point light custom texture arrays.
-        private int GetCookieTextureFormatBytes(LightVolumeSetup.TextureArrayFormat format) {
-            if (format == LightVolumeSetup.TextureArrayFormat.RGBA32) return 4;
-            if (format == LightVolumeSetup.TextureArrayFormat.RGBAFloat) return 16;
-            return 8;
-        }
-
-        // Returns bytes per pixel for shadow texture arrays.
-        private int GetShadowTextureFormatBytes(LightVolumeSetup.ShadowTextureFormat format) {
-            return format == LightVolumeSetup.ShadowTextureFormat.RFloat ? 4 : 2;
         }
 
         // Real size in VRAM.
@@ -409,8 +363,8 @@ namespace VRCLightVolumes {
         }
 
         // Approximate size in Asset bundle.
-        private string SizeInBundle(ulong byteCount) {
-            double mb = byteCount * 0.315f / (double)(1024 * 1024);
+        private string SizeInBundle(ulong atlasVoxelCount) {
+            double mb = atlasVoxelCount * 8 * 0.315f / (double)(1024 * 1024);
             return mb.ToString("0.00");
         }
 

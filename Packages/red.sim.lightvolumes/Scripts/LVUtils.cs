@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEditor;
 using UnityEngine.Rendering;
 
@@ -10,12 +10,12 @@ using UnityEditor.SceneManagement;
 namespace VRCLightVolumes {
     public class LVUtils {
 
-        // Transforms point with specified Position, Rotation and Scale
+        // Transforms a point with the specified position, rotation, and scale
         public static Vector3 TransformPoint(Vector3 point, Vector3 position, Quaternion rotation, Vector3 scale) {
             return rotation * Vector3.Scale(point, scale) + position;
         }
 
-        // Setting lossy scale to a specified transform
+        // Sets lossy scale on the specified transform
         public static void SetLossyScale(Transform transform, Vector3 targetLossyScale, int maxIterations = 20) {
             Vector3 guess = transform.localScale;
             for (int i = 0; i < maxIterations; i++) {
@@ -30,14 +30,14 @@ namespace VRCLightVolumes {
             }
         }
 
-        // Plane vertices for drawing a square
+        // Returns plane vertices for drawing a square
         public static Vector3[] GetPlaneVertices(Vector3 center, Quaternion rotation, float size) {
             Vector3 right = rotation * Vector3.right * size;
             Vector3 up = rotation * Vector3.up * size;
             return new Vector3[] { center - right - up, center - right + up, center + right + up, center + right - up };
         }
 
-        // Check if it's previewed as a prefab, or it's a part of a scene
+        // Checks whether this object is previewed as a prefab or is part of a scene
         public static bool IsInPrefabAsset(Object obj) {
 #if UNITY_EDITOR
             var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
@@ -58,7 +58,7 @@ namespace VRCLightVolumes {
 #endif
         }
 
-        // Apply voxels to a 3D Texture
+        // Applies voxels to a 3D texture
         public static bool Apply3DTextureData(Texture3D texture, Color[] colors) {
             try {
                 texture.SetPixels(colors);
@@ -70,7 +70,7 @@ namespace VRCLightVolumes {
             }
         }
 
-        // Remaps value
+        // Remaps a value
         public static float Remap(float value, float MinOld, float MaxOld, float MinNew, float MaxNew) {
             return MinNew + (value - MinOld) * (MaxNew - MinNew) / (MaxOld - MinOld);
         }

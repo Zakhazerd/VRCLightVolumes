@@ -1,4 +1,4 @@
-﻿
+
 using UnityEngine;
 #if UDONSHARP
 using UdonSharp;
@@ -25,8 +25,6 @@ namespace VRCLightVolumes {
         public Vector4 PositionData;
         [Tooltip("For point light: XYZW = Rotation quaternion.\nFor spot light: XYZ = Direction, W = Cone falloff.\nFor area light: XYZW = Rotation quaternion.")]
         public Vector4 DirectionData;
-        [Tooltip("If parametric: Stores 0.\nIf uses custom LUT: Stores LUT ID with positive sign.\nIf uses custom texture: Stores texture ID with negative sign.")]
-        public float CustomID;
         [Tooltip("Half-angle of the spotlight cone, in radians.")]
         public float Angle;
         [Tooltip("For point light: unused.\nFor spot light: Cos of outer angle if no custom texture, tan of outer angle otherwise.\nFor area light: 2 + Height.")]
@@ -35,12 +33,12 @@ namespace VRCLightVolumes {
         public float ShadowMapID = -1;
         [Tooltip("Enables World Space Shadows using the bake position. Disable for Local Space Shadows that move and rotate with this light.")]
         public bool WorldSpaceShadows = false;
-        [Tooltip("Enables 4-sample PCF filtering for this light's shadow map.")]
-        public bool SoftShadows = true;
         [Tooltip("World-space bias in meters applied when comparing shaded points against this light's shadow map.")]
         [Min(0)] public float ShadowBias = 0.03f;
         [Tooltip("World-space smoothing radius in meters around this light's shadow bias threshold.")]
         [Min(0)] public float ShadowBiasSmoothness = 0.02f;
+        [Tooltip("Multiplier for shadow PCF sampling sharpness. 1 keeps native shadow map sharpness, lower values make shadows softer.")]
+        [Range(0, 1)] public float ShadowSharpness = 1f;
         [Tooltip("World-space position where the shadow map was baked.")]
         public Vector3 ShadowBakePosition = Vector3.zero;
         [Tooltip("World-space rotation where the shadow map was baked.")]
@@ -53,8 +51,34 @@ namespace VRCLightVolumes {
         public float SquaredScale = 1;
         [Tooltip("Reference to the Light Volume Manager. Needed for runtime initialization.")]
         public LightVolumeManager LightVolumeManager;
+        [Tooltip("Texture source used by this light's active LUT, cookie or cubemap projection.")]
+        public Texture CustomTexture;
+        [Tooltip("Material source used by this light's active LUT, cookie or cubemap projection.")]
+        public Material CustomTextureMaterial;
+        [Tooltip("Projection source type used by this light. 0 = none, 1 = texture, 2 = material.")]
+        public int ProjectionType = 0; // 0: none, 1: texture, 2: material
+        [Tooltip("Updates this light's custom texture slice every frame.")]
+        public bool AutoUpdateCustomTexture = false;
 
-        [HideInInspector] public bool IsRangeDirty = false; // Sets to true to recalculate the range automatically by the manager
+        // Internal projection metadata copied from the authoring PointLightVolume
+        [HideInInspector] public bool CustomTextureIsCubemap = false;
+        [HideInInspector] public bool CustomTextureIsRenderTexture = false;
+        [HideInInspector] public bool CustomTextureHasDepthSlices = false;
+        [HideInInspector] public int ProjectionMode = 0; // 0: parametric, 1: LUT, 2: custom cookie or cubemap
+
+        [Tooltip("Texture source used by this light's shadow map.")]
+        public Texture ShadowMapTexture;
+        [Tooltip("Material source used by this light's shadow map.")]
+        public Material ShadowMapMaterial;
+        [Tooltip("Updates this light's shadow map cubemap every frame.")]
+        public bool AutoUpdateShadowMap = false;
+
+        // Internal shadow source metadata copied from the authoring PointLightVolume
+        [HideInInspector] public bool ShadowMapTextureIsCubemap = false;
+        [HideInInspector] public bool ShadowMapTextureHasDepthSlices = false;
+
+        // Internal dirty flag consumed by LightVolumeManager to recalculate this light's range
+        [HideInInspector] public bool IsRangeDirty = false;
         private Vector3 _prevPosition = Vector3.zero;
         private Quaternion _prevRotation = Quaternion.identity;
         private Vector3 _prevScale = Vector3.one;
@@ -65,13 +89,13 @@ namespace VRCLightVolumes {
 #if UDONSHARP
         // Works only when changing values directly on UdonBehaviour
         // Low level Udon hacks:
-        // _old_(Name) variables are the old values of the variables.
-        // _onVarChange_(Name) methods (events) are called when the variable changes.
+        // _old_(Name) variables are the old values of the variables
+        // _onVarChange_(Name) methods (events) are called when the variable changes
         public void _onVarChange_Color() {
-            if (_old_Color != Color) MarkRangeDirtyAndRequestUpdate();
+            if (_old_Color != Color) MarkRangeDirtyAndUpdateVolumes();
         }
         public void _onVarChange_Intensity() {
-            if (_old_Intensity != Intensity) MarkRangeDirtyAndRequestUpdate();
+            if (_old_Intensity != Intensity) MarkRangeDirtyAndUpdateVolumes();
         }
 #endif
 
@@ -81,7 +105,7 @@ namespace VRCLightVolumes {
             if (_old_Color != Color || _old_Intensity != Intensity) {
                 _old_Color = Color;
                 _old_Intensity = Intensity;
-                RquestUpdateVolumes();
+                if (LightVolumeManager != null) LightVolumeManager.RequestUpdateVolumes();
             }
         }
 #endif
@@ -101,139 +125,204 @@ namespace VRCLightVolumes {
             if (LightVolumeManager != null) {
                 LightVolumeManager.InitializePointLightVolume(this);
             }
-            RquestUpdateVolumes();
+            if (LightVolumeManager != null) LightVolumeManager.RequestUpdateVolumes();
         }
 
         private void OnDisable() {
             if (LightVolumeManager != null) {
                 LightVolumeManager.UnregisterPointLightVolume(this);
             }
-            RquestUpdateVolumes();
+            if (LightVolumeManager != null) LightVolumeManager.RequestUpdateVolumes();
         }
 
-        // Checks if it's a spotlight
+        // Checks whether this instance is a spotlight
         public bool IsSpotLight() {
             return PositionData.w < 0;
         }
         
-        // Checks if it's a point light
+        // Checks whether this instance is a point light
         public bool IsPointLight() {
             return PositionData.w >= 0 && AngleData <= 1.5;
         }
 
-        // Checks if it's an area light
+        // Checks whether this instance is an area light
         public bool IsAreaLight() {
             return PositionData.w >= 0 && AngleData > 1.5;
         }
 
-        // Checks if uses custom texture
+        // Checks whether this instance uses a custom texture
         public bool IsCustomTexture() {
-            return CustomID < 0;
+            return ProjectionMode == 2; // 2: custom cookie or cubemap
         }
 
-        // Checks if uses LUT
+        // Checks whether this instance uses a LUT
         public bool IsLut() {
-            return CustomID > 0;
+            return ProjectionMode == 1; // 1: LUT
         }
 
-        // Checks if uses Parametric mode
+        // Checks whether this instance uses parametric mode
         public bool IsParametric() {
-            return CustomID == 0;
+            return ProjectionMode == 0; // 0: parametric
         }
 
-        // Sets Light source size, or a range data for LUT mode
+        // Sets light source size or range data for LUT mode
         public void SetLightSourceSize(float size) {
             if (IsLut()) {
-                PositionData.w = Mathf.Sign(PositionData.w) / (size * size); // Saving the sign that was here before. Inversed squared range
+                PositionData.w = Mathf.Sign(PositionData.w) / (size * size); // Preserve the previous sign. Inverse squared range
             } else {
-                PositionData.w = Mathf.Sign(PositionData.w) * size * size; // Saving the sign that was here before. Squared light size
+                PositionData.w = Mathf.Sign(PositionData.w) * size * size; // Preserve the previous sign. Squared light size
             }
-            MarkRangeDirtyAndRequestUpdate();
+            MarkRangeDirtyAndUpdateVolumes();
         }
 
-        // Sets LUT ID
-        public void SetLut(int id) {
-            CustomID = id + 1;
+        // Sets LUT mode
+        public void SetLut() {
+            ProjectionMode = 1; // 1: LUT
             AngleData = Mathf.Cos(Angle);
             UpdateRotation();
-            MarkRangeDirtyAndRequestUpdate();
+            MarkRangeDirtyAndUpdateVolumes();
         }
 
-        // Sets Cubemap or a Cookie ID
-        public void SetCustomTexture(int id) {
-            CustomID = - id - 1;
-            if(IsSpotLight()) { // If it's spotlight
-                AngleData = Mathf.Tan(Angle);
+        // Sets cubemap or cookie projection mode
+        public void SetCustomTexture() {
+            SetCustomProjectionMode();
+            MarkRangeDirtyAndUpdateVolumes();
+        }
+
+        // Sets a texture source for this light's custom projection and refreshes manager runtime texture caches
+        public void SetCustomTexture(Texture texture, bool isCubemap, bool autoUpdate) {
+            CustomTexture = texture;
+            CustomTextureMaterial = null;
+            ProjectionType = 0; // 0: none
+            AutoUpdateCustomTexture = false;
+            CustomTextureIsRenderTexture = false;
+            CustomTextureIsCubemap = false;
+            CustomTextureHasDepthSlices = false;
+
+            if (texture != null) {
+                ProjectionType = 1; // 1: texture
+                AutoUpdateCustomTexture = autoUpdate;
+
+                CustomTextureIsRenderTexture = autoUpdate;
+                if (isCubemap) {
+                    int textureDimension = (int)texture.dimension;
+                    if (textureDimension == 4) CustomTextureIsCubemap = true; // 4: TextureDimension.Cube
+                    else if (textureDimension == 5) CustomTextureHasDepthSlices = true; // 5: TextureDimension.Tex2DArray
+                }
+
+                SetCustomProjectionMode();
+            } else {
+                SetParametricMode();
             }
-            UpdateRotation();
-            MarkRangeDirtyAndRequestUpdate();
+            ReinitializeCustomTexturesAndUpdateVolumes();
         }
 
-        // Sets light into parametric mode
+        // Sets a material source for this light's custom projection and refreshes manager runtime texture caches
+        public void SetCustomMaterial(Material material, bool autoUpdate) {
+            CustomTexture = null;
+            CustomTextureMaterial = material;
+            ProjectionType = 0; // 0: none
+            AutoUpdateCustomTexture = false;
+            CustomTextureIsRenderTexture = false;
+            CustomTextureIsCubemap = false;
+            CustomTextureHasDepthSlices = false;
+
+            if (material != null) {
+                ProjectionType = 2; // 2: material
+                AutoUpdateCustomTexture = autoUpdate;
+                SetCustomProjectionMode();
+            } else {
+                SetParametricMode();
+            }
+            ReinitializeCustomTexturesAndUpdateVolumes();
+        }
+
+        // Sets the light into parametric mode
         public void SetParametric() {
-            CustomID = 0;
-            AngleData = Mathf.Cos(Angle);
-            UpdateRotation();
-            MarkRangeDirtyAndRequestUpdate();
+            SetParametricMode();
+            MarkRangeDirtyAndUpdateVolumes();
         }
 
-        // Sets light into the point light type
+        // Sets the light into the point light type
         public void SetPointLight() {
             PositionData.w = Mathf.Abs(PositionData.w);
             UpdateRotation();
-            MarkRangeDirtyAndRequestUpdate();
+            MarkRangeDirtyAndUpdateVolumes();
         }
 
-        // Sets light into the spot light type with both angle and falloff because angle required to determine falloff anyway
+        // Sets the light into the spotlight type with both angle and falloff because angle is required to determine falloff
         public void SetSpotLight(float angleDeg, float falloff) {
             Angle = angleDeg * Mathf.Deg2Rad * 0.5f;
             if (IsCustomTexture()) {
-                AngleData = Mathf.Tan(Angle); // Using Custom Tex
+                AngleData = Mathf.Tan(Angle); // Use custom texture projection
             } else {
                 AngleData = Mathf.Cos(Angle);
                 DirectionData.w = 1 / (Mathf.Cos(Angle * (1.0f - Mathf.Clamp01(falloff))) - AngleData);
             }
             PositionData.w = - Mathf.Abs(PositionData.w);
             UpdateRotation();
-            MarkRangeDirtyAndRequestUpdate();
+            MarkRangeDirtyAndUpdateVolumes();
         }
 
-        // Sets light into the spot light type with angle specified
+        // Sets the light into the spotlight type with a specified angle
         public void SetSpotLight(float angleDeg) {
             Angle = angleDeg * Mathf.Deg2Rad * 0.5f;
             if (IsCustomTexture()) {
-                AngleData = Mathf.Tan(Angle); // Using Custom Tex
+                AngleData = Mathf.Tan(Angle); // Use custom texture projection
             } else {
                 AngleData = Mathf.Cos(Angle);
             }
             PositionData.w = - Mathf.Abs(PositionData.w);
             UpdateRotation();
-            MarkRangeDirtyAndRequestUpdate();
+            MarkRangeDirtyAndUpdateVolumes();
         }
         
-        // Sets light into the area light type
+        // Sets the light into the area light type
         public void SetAreaLight() {
             PositionData.w = Mathf.Max(Mathf.Abs(transform.lossyScale.x), 0.001f);
-            AngleData = 2 + Mathf.Max(Mathf.Abs(transform.lossyScale.y), 0.001f); // Add 2 to get out of [-1; 1] codomain of cosine
+            AngleData = 2 + Mathf.Max(Mathf.Abs(transform.lossyScale.y), 0.001f); // Add 2 to move outside the [-1; 1] cosine codomain
             UpdateRotation();
-            MarkRangeDirtyAndRequestUpdate();
+            MarkRangeDirtyAndUpdateVolumes();
         }
 
         // Sets light source color
         public void SetColor(Color color) {
             Color = color;
-            MarkRangeDirtyAndRequestUpdate();
+            MarkRangeDirtyAndUpdateVolumes();
         }
 
         // Sets light source intensity
         public void SetIntensity(float intensity) {
             Intensity = intensity;
-            MarkRangeDirtyAndRequestUpdate();
+            MarkRangeDirtyAndUpdateVolumes();
         }
 
-        private void MarkRangeDirtyAndRequestUpdate() {
+        // Marks this light range dirty and immediately refreshes the manager shader data
+        private void MarkRangeDirtyAndUpdateVolumes() {
             IsRangeDirty = true;
-            RquestUpdateVolumes();
+            if (LightVolumeManager != null) LightVolumeManager.RequestUpdateVolumes();
+        }
+
+        // Marks projection source caches dirty by rebuilding them before the shader data refresh
+        private void ReinitializeCustomTexturesAndUpdateVolumes() {
+            IsRangeDirty = true;
+            if (LightVolumeManager == null) return;
+            LightVolumeManager.ReinitializeCustomTextures();
+            LightVolumeManager.RequestUpdateVolumes();
+        }
+
+        // Applies the internal custom projection mode without touching texture source fields
+        private void SetCustomProjectionMode() {
+            ProjectionMode = 2; // 2: custom cookie or cubemap
+            if(IsSpotLight()) AngleData = Mathf.Tan(Angle);
+            UpdateRotation();
+        }
+
+        // Applies the internal parametric projection mode without touching texture source fields
+        private void SetParametricMode() {
+            ProjectionMode = 0; // 0: parametric
+            AngleData = Mathf.Cos(Angle);
+            UpdateRotation();
         }
 
         // Updates data required for shader
@@ -273,7 +362,7 @@ namespace VRCLightVolumes {
             Quaternion rot = transform.rotation;
             if (IsAreaLight()) {
                 DirectionData = new Vector4(rot.x, rot.y, rot.z, rot.w);
-            } else if (IsSpotLight() && !IsCustomTexture()) { // If Spot Light with no cookie
+            } else if (IsSpotLight() && !IsCustomTexture()) { // Spot light without a cookie
                 Vector3 dir = transform.forward;
                 DirectionData = new Vector4(dir.x, dir.y, dir.z, DirectionData.w);
             } else if (!IsParametric()) { // If Point Light with a cubemap or a spot light with cookie
@@ -288,7 +377,7 @@ namespace VRCLightVolumes {
             if (IsAreaLight()) SetAreaLight();
             SquaredScale = (lscale.x + lscale.y + lscale.z) / 3;
             SquaredScale *= SquaredScale;
-            MarkRangeDirtyAndRequestUpdate();
+            MarkRangeDirtyAndUpdateVolumes();
         }
 
         // Recalculates squared culling range for the light
@@ -296,7 +385,7 @@ namespace VRCLightVolumes {
             float cutoff = LightVolumeManager != null ? LightVolumeManager.LightsBrightnessCutoff : 0.35f;
             if (IsAreaLight()) { // Area light squared distance math
                 SquaredRange = ComputeAreaLightSquaredBoundingSphere(Mathf.Abs(SquaredScale / PositionData.w), AngleData - 2, Color, Intensity * Mathf.PI, cutoff);
-            } else if(IsLut()) { // LUT - regualar squared range
+            } else if(IsLut()) { // LUT uses regular squared range
                 SquaredRange = Mathf.Abs(SquaredScale / PositionData.w);
             } else { // Spot and Point light squared distance math
                 SquaredRange = ComputePointLightSquaredBoundingSphere(Color, Intensity, Mathf.Abs(SquaredScale * PositionData.w), cutoff);
@@ -321,15 +410,6 @@ namespace VRCLightVolumes {
         private float ComputePointLightSquaredBoundingSphere(Color color, float intensity, float sqSize, float cutoff) {
             float L = Mathf.Max(color.r, Mathf.Max(color.g, color.b));
             return Mathf.Max(Mathf.PI * 2 * L * Mathf.Abs(intensity) / (cutoff * cutoff) - 1, 0) * sqSize;
-        }
-
-        private void RquestUpdateVolumes() {
-#if COMPILER_UDONSHARP
-            if (Utilities.IsValid(LightVolumeManager)) 
-#else
-            if (LightVolumeManager != null)
-#endif
-                LightVolumeManager.RequestUpdateVolumes();
         }
 
     }

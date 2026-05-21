@@ -1,7 +1,7 @@
 Shader "Hidden/CubeFace"
 {
     Properties {
-        _MainTex("Cubemap", Cube) = "" {}
+        _CubeTex("Cubemap", Cube) = "" {}
         _FaceIndex("FaceIndex", Int) = 0
     }
     SubShader {
@@ -14,7 +14,7 @@ Shader "Hidden/CubeFace"
             #pragma fragment frag
             #include "UnityCG.cginc"
 
-            samplerCUBE _MainTex;
+            samplerCUBE _CubeTex;
             int _FaceIndex;
 
             struct appdata {
@@ -47,7 +47,7 @@ Shader "Hidden/CubeFace"
                 float2 uv = i.uv * 2 - 1;
                 float3 viewDir = faceDirs[_FaceIndex][0] + uv.x * faceDirs[_FaceIndex][1] + uv.y * faceDirs[_FaceIndex][2];
 
-                return texCUBE(_MainTex, - normalize(viewDir));
+                return texCUBE(_CubeTex, - normalize(viewDir));
             }
             ENDCG
         }

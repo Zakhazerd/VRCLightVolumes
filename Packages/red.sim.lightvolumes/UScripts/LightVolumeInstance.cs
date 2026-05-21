@@ -65,11 +65,11 @@ namespace VRCLightVolumes {
         // Without udon it should be chacked in update
         public void _onVarChange_Color() {
             if (_old_Color != Color)
-                RequestUpdateVolumes();
+                if (Utilities.IsValid(LightVolumeManager)) LightVolumeManager.RequestUpdateVolumes();
         }
         public void _onVarChange_Intensity() {
             if (_old_Intensity != Intensity)
-                RequestUpdateVolumes();
+                if (Utilities.IsValid(LightVolumeManager)) LightVolumeManager.RequestUpdateVolumes();
         }
 #endif
 
@@ -79,7 +79,7 @@ namespace VRCLightVolumes {
             if (_old_Color != Color || _old_Intensity != Intensity) {
                 _old_Color = Color;
                 _old_Intensity = Intensity;
-                RequestUpdateVolumes();
+                if (LightVolumeManager != null) LightVolumeManager.RequestUpdateVolumes();
             }
         }
 #endif
@@ -99,21 +99,21 @@ namespace VRCLightVolumes {
             if (LightVolumeManager != null) {
                 LightVolumeManager.InitializeLightVolume(this);
             }
-            RequestUpdateVolumes();
+            if (LightVolumeManager != null) LightVolumeManager.RequestUpdateVolumes();
         }
 
         private void OnDisable() {
             if (LightVolumeManager != null) {
                 LightVolumeManager.UnregisterLightVolume(this);
             }
-            RequestUpdateVolumes();
+            if (LightVolumeManager != null) LightVolumeManager.RequestUpdateVolumes();
         }
 
         // Calculates and sets invLocalEdgeBlending
         public void SetSmoothBlending(float radius) {
             Vector3 scl = transform.lossyScale;
             InvLocalEdgeSmoothing = scl / Mathf.Max(radius, 0.00001f);
-            RequestUpdateVolumes();
+            if (LightVolumeManager != null) LightVolumeManager.RequestUpdateVolumes();
         }
 
         // Recalculates inv TRS matrix and Relative L1 rotation
@@ -133,15 +133,6 @@ namespace VRCLightVolumes {
             RelativeRotationRow1 = row1;
 
             RelativeRotation = new Vector4(rot.x, rot.y, rot.z, rot.w);
-        }
-
-        private void RequestUpdateVolumes() {
-#if COMPILER_UDONSHARP
-            if (Utilities.IsValid(LightVolumeManager)) 
-#else
-            if (LightVolumeManager != null)
-#endif
-                LightVolumeManager.RequestUpdateVolumes();
         }
 
     }
