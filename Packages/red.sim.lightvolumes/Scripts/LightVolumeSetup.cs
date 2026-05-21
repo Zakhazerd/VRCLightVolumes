@@ -31,6 +31,10 @@ namespace VRCLightVolumes {
         [Tooltip("The minimum brightness at a point due to lighting from a Point Light Volume, before the light is culled. Larger values will result in better performance, but light attenuation will be less physically correct.")]
         [Range(0.05f, 1f)] public float LightsBrightnessCutoff = 0.35f;
 
+        [Header("Directional Depth Textures")]
+        [Tooltip("The precision of the depth texture. R8 is sufficient for volumes smaller than 15x15x15. Rfloats are typically never needed")]
+        public DepthTextureFormat DepthFormat = DepthTextureFormat.R8Norm;
+
         [Header("Baking")]
         [Tooltip("Bakery usually gives better results and works faster.")]
 #if BAKERY_INCLUDED
@@ -743,7 +747,12 @@ namespace VRCLightVolumes {
                     bool isBaked = LightVolumes[i].BakeOcclusionTexture($"| {LightVolumes[i].gameObject.name} ({i}/{LightVolumes.Count})");
                     isRebaked = isRebaked || isBaked;
                 }
+                if (LightVolumes[i].DirecionalLightShadows && LightVolumes[i].LightVolumeInstance != null)
+                {
+                    bool isDirectionalBaked = LightVolumes[i].BakeDirectionalDepthTexture($"| {LightVolumes[i].gameObject.name} ({i}/{LightVolumes.Count})");
+                }
             }
+
             if(isRebaked) GenerateAtlas();
 #endif
         }
@@ -769,7 +778,12 @@ namespace VRCLightVolumes {
             _1024x1024 = 1024,
             _2048x2048 = 2048
         }
-
+        public enum DepthTextureFormat
+        {
+            R8Norm = 5,
+            R16Norm = 21,
+            R32Float = 49
+        }
         public enum Downscale {
             None = 0,
             x2 = 1,

@@ -506,6 +506,47 @@ namespace VRCLightVolumes
             
             return tex;
         }
+        public static Texture2D BakeDepthFromCamera(Camera cam, int resolution, int depthFormat)
+        {
+            if (cam == null) return null;
+
+            Shader depthShader = Shader.Find("Hidden/DirectDepthToColor");
+            if (depthShader == null)
+            {
+                Debug.LogError("Could not find shader 'Hidden/DirectDepthToColor'.");
+                return null;
+            }
+            UnityEngine.Experimental.Rendering.GraphicsFormat graphicsFormat = (UnityEngine.Experimental.Rendering.GraphicsFormat)depthFormat; //should i just include it?
+
+            // Create temp render texture and set cam
+            RenderTexture tempRender = new RenderTexture(resolution, resolution, 32, graphicsFormat);
+            tempRender.useMipMap = false;
+            tempRender.Create();
+            cam.targetTexture = tempRender;
+            cam.backgroundColor = Color.black;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+
+            // Force draw depth
+            cam.RenderWithShader(depthShader, "RenderType"); //Redsim probably has a better solution
+
+            // Output Texture
+            Texture2D outputTex = new Texture2D(resolution, resolution, graphicsFormat, UnityEngine.Experimental.Rendering.TextureCreationFlags.None);
+            outputTex.filterMode = FilterMode.Bilinear;
+
+            // Readback
+            RenderTexture previousActive = RenderTexture.active;
+            RenderTexture.active = tempRender;
+            outputTex.ReadPixels(new Rect(0, 0, resolution, resolution), 0, 0);
+            outputTex.Apply();
+            RenderTexture.active = previousActive;
+            
+            // Clean up
+            Object.DestroyImmediate(cam.gameObject);
+            tempRender.Release();
+            Object.DestroyImmediate(tempRender);
+
+            return outputTex;
+        }
     }
 }
 #endif

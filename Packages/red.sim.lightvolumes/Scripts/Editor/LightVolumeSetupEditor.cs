@@ -308,7 +308,7 @@ namespace VRCLightVolumes {
 
                 bool isShadowMask = false;
                 for (int i = 0; i < lvcount; i++) {
-                    if (_lightVolumeSetup.LightVolumes[i].PointLightShadows && _lightVolumeSetup.LightVolumes[i].LightVolumeInstance != null) {
+                    if (_lightVolumeSetup.LightVolumes[i].PointLightShadows || _lightVolumeSetup.LightVolumes[i].DirecionalLightShadows && _lightVolumeSetup.LightVolumes[i].LightVolumeInstance != null) {
                         isShadowMask = true;
                         break;
                     }

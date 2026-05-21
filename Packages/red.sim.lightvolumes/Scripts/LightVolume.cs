@@ -39,6 +39,8 @@ namespace VRCLightVolumes {
         public Texture3D Texture2;
         [Tooltip("Optional Texture3D with baked shadow mask data for future atlas packing. It won't be uploaded to VRChat. Stores occlusion for up to 4 nearby point light volumes.")]
         public Texture3D ShadowsTexture;
+        [Tooltip("Optional Texture2D with baked depth data for directional light Shadows.")]
+        public Texture2D DirectionalDepthTexture;
 
         [Header("Color Correction")]
         [Tooltip("Makes volume brighter or darker")]
@@ -57,6 +59,10 @@ namespace VRCLightVolumes {
         public float ShadowsScale = 1f;
         [Tooltip("Post-processes the baked occlusion texture with a softening blur. This can help mitigate 'blocky' shadows caused by aliasing, but also makes shadows less crispy.")]
         public bool BlurShadows = true;
+        [Tooltip("Check if you have a directional light to bake static object shadows")]
+        public bool DirecionalLightShadows = false;
+        [Tooltip("The resolution of the baked directional light depth texture.")]
+        public DepthTexturyResolution TextureResolution = DepthTexturyResolution._1024x1024;
         [Tooltip("Automatically sets the resolution based on the Voxels Per Unit value.")]
         public bool AdaptiveResolution = true;
         [Tooltip("Number of voxels used per meter, linearly. This value increases the Light Volume file size cubically.")]
@@ -265,6 +271,64 @@ namespace VRCLightVolumes {
             
             LightVolumeInstance.BakeOcclusion = occ != null;
             LVUtils.MarkDirty(LightVolumeInstance);
+
+            return true;
+        }
+
+        public bool BakeDirectionalDepthTexture(string infoString = "")
+        {
+            bool needOcclusion = DirecionalLightShadows;
+            Light[] sceneLights = FindObjectsOfType<Light>();
+            Vector3 lightForward = Vector3.zero;
+            foreach (Light light in sceneLights)
+            {
+                if (light.type == LightType.Directional)
+                {
+                    lightForward = light.transform.forward;
+                    needOcclusion = true;
+                    break;
+                }
+                needOcclusion = false;
+            }
+
+            if (!needOcclusion)
+            {
+                if (DirectionalDepthTexture != null)
+                    LVUtils.MarkDirty(this);
+           //     if (LightVolumeInstance.BakeOcclusion) //Come back to this what needs to be included in the instance
+           //        LVUtils.MarkDirty(LightVolumeInstance);
+                DirectionalDepthTexture = null;
+           //     LightVolumeInstance.BakeOcclusion = false;
+                return false;
+            }
+
+            // Calcutate position and rotation for baking camera
+            var targetPosition = transform.position - (lightForward * transform.lossyScale.magnitude * .5f) ;
+            var lookDirection = transform.position - targetPosition;
+            var targetRotation = Quaternion.LookRotation(lookDirection, Vector3.up);
+
+            // Instantiate the new GameObject holding the camera
+            GameObject camGO = new GameObject("DepthProjectionCamera");
+            camGO.transform.position = targetPosition;
+            camGO.transform.rotation = targetRotation;
+            Camera projectionCam = camGO.AddComponent<Camera>();
+            projectionCam.orthographic = true;
+            projectionCam.orthographicSize = transform.lossyScale.magnitude * .5f;
+            projectionCam.nearClipPlane = 0f;
+            projectionCam.farClipPlane = transform.lossyScale.magnitude;
+
+            Texture2D BakedDepthTexture = LightVolumeOcclusionBaker.BakeDepthFromCamera(projectionCam, (int)TextureResolution, (int)LightVolumeSetup.DepthFormat);
+
+            string path = $"{Path.GetDirectoryName(SceneManager.GetActiveScene().path)}/{SceneManager.GetActiveScene().name}/VRCLightVolumes/Temp";
+            if (BakedDepthTexture != null)
+                LVUtils.SaveAsAsset(BakedDepthTexture, $"{path}/{gameObject.name}_depth.asset");
+
+            DirectionalDepthTexture = BakedDepthTexture;
+            LVUtils.MarkDirty(this);
+
+           // Object.DestroyImmediate(projectionCam);
+
+            Selection.activeGameObject = camGO;
 
             return true;
         }
@@ -726,7 +790,16 @@ namespace VRCLightVolumes {
             _isValidated = true;
             Recalculate();
         }
-#endif
 
+#endif
+        public enum DepthTexturyResolution
+        {
+            _256x256 = 256,
+            _512x512 = 512,
+            _1024x1024 = 1024,
+            _2048x2048 = 2048,
+            _4096x4096 = 4096,
+            _8192x8192 = 8192,
+        }
     }
 }

@@ -131,7 +131,12 @@ namespace VRCLightVolumes {
                 hiddenFields.Add("BlurShadows");
                 hiddenFields.Add("ShadowsScale");
             }
-            
+
+            if (!LightVolume.DirecionalLightShadows) {
+                hiddenFields.Add("TextureResolution");
+                hiddenFields.Add("DepthFormat");
+            }
+
             if (!LightVolume.Bake) {
                 hiddenFields.Add("AdaptiveResolution");
                 hiddenFields.Add("Resolution");
